@@ -80,7 +80,7 @@ def create_tracks_manager(
     min_length: int,
 ) -> TracksManager:
     """Link matches into tracks."""
-    logger.debug("Merging features onto tracks")
+    logger.info("Merging features onto tracks")
     uf = UnionFind()
     for im1, im2 in matches:
         for f1, f2 in matches[im1, im2]:
@@ -95,7 +95,7 @@ def create_tracks_manager(
             sets[p] = [i]
 
     tracks = [t for t in sets.values() if _good_track(t, min_length)]
-    logger.debug("Good tracks: {}".format(len(tracks)))
+    logger.info("Good tracks: {}".format(len(tracks)))
 
     NO_VALUE = pymap.Observation.NO_SEMANTIC_VALUE
     tracks_manager = pymap.TracksManager()

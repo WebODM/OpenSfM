@@ -34,7 +34,7 @@ def undistort_reconstruction(
     urec.reference = reconstruction.reference
     rig_instance_count = itertools.count()
     utracks_manager = pymap.TracksManager()
-    logger.debug("Undistorting the reconstruction")
+    logger.info("Undistorting the reconstruction")
     undistorted_shots = {}
     for shot in reconstruction.shots.values():
         if shot.id not in all_images:

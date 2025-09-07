@@ -159,7 +159,7 @@ def read_images(
 ) -> None:
     full_queue_timeout = 3600
     for image in images:
-        logger.info(f"Reading data for image {image} (queue-size={queue.qsize()})")
+        logger.debug(f"Reading data for image {image} (queue-size={queue.qsize()})")
         image_array = data.load_image(image)
         if data.config["features_bake_segmentation"]:
             segmentation_array = data.load_segmentation(image)
@@ -247,10 +247,6 @@ def detect(
         )
         return
 
-    logger.info(
-        "Extracting {} features for image {}".format(data.feature_type().upper(), image)
-    )
-
     start = timer()
 
     p_unmasked, f_unmasked, c_unmasked = features.extract_features(
@@ -276,6 +272,10 @@ def detect(
 
     if len(p_unsorted) == 0:
         logger.warning("No features found in image {}".format(image))
+    else:
+        logger.info(
+            "Found {} features for {} ({})".format(len(p_unsorted), image, data.feature_type().upper())
+        )
 
     size = p_unsorted[:, 2]
     order = np.argsort(size)

@@ -239,17 +239,19 @@ def match_descriptors(
         matches_unfiltered = unfilter_matches(matches, m1, m2)
 
     symmetric = "symmetric" if overriden_config["symmetric_matching"] else "one-way"
-    logger.debug(
-        "Matching {} and {}.  Matcher: {} ({}) "
-        "T-desc: {:1.3f} Matches: {}".format(
-            im1,
-            im2,
-            matcher_type,
-            symmetric,
-            time_2d_matching,
-            len(matches_unfiltered),
-        )
-    )
+    logger.info("Matching: {} <=> {}: {}".format(im1, im2, len(matches_unfiltered)))
+    
+    # logger.debug(
+    #     "Matching {} and {}.  Matcher: {} ({}) "
+    #     "T-desc: {:1.3f} Matches: {}".format(
+    #         im1,
+    #         im2,
+    #         matcher_type,
+    #         symmetric,
+    #         time_2d_matching,
+    #         len(matches_unfiltered),
+    #     )
+    # )
     return np.array(matches_unfiltered, dtype=int)
 
 
@@ -512,17 +514,19 @@ def match_robust(
         rmatches_unfiltered = unfilter_matches(rmatches, m1, m2)
 
     robust_matching_min_match = overriden_config["robust_matching_min_match"]
-    logger.debug(
-        "Matching {} and {}. T-robust: {:1.3f} "
-        "Matches: {} Robust: {} Success: {}".format(
-            im1,
-            im2,
-            time_robust_matching,
-            len(matches),
-            len(rmatches_unfiltered),
-            len(rmatches_unfiltered) >= robust_matching_min_match,
-        )
-    )
+    success = len(rmatches_unfiltered) >= robust_matching_min_match
+    logger.info("Match: {} <=> {}: {}".format(im1, im2, len(rmatches_unfiltered) >= robust_matching_min_match))
+    # logger.debug(
+    #     "Matching {} and {}. T-robust: {:1.3f} "
+    #     "Matches: {} Robust: {} Success: {}".format(
+    #         im1,
+    #         im2,
+    #         time_robust_matching,
+    #         len(matches),
+    #         len(rmatches_unfiltered),
+    #         len(rmatches_unfiltered) >= robust_matching_min_match,
+    #     )
+    # )
 
     if len(rmatches_unfiltered) < robust_matching_min_match:
         return np.array([])
@@ -576,12 +580,14 @@ def match(
     symmetric = "symmetric" if overriden_config["symmetric_matching"] else "one-way"
     robust_matching_min_match = overriden_config["robust_matching_min_match"]
     if len(matches) < robust_matching_min_match:
-        logger.debug(
-            "Matching {} and {}.  Matcher: {} ({}) T-desc: {:1.3f} "
-            "Matches: FAILED".format(
-                im1, im2, matcher_type, symmetric, time_2d_matching
-            )
-        )
+        logger.info("Matching {} <=> {}: {} {}".format(im1, im2, len(matches), "NO"))
+    
+        # logger.debug(
+        #     "Matching {} and {}.  Matcher: {} ({}) T-desc: {:1.3f} "
+        #     "Matches: FAILED".format(
+        #         im1, im2, matcher_type, symmetric, time_2d_matching
+        #     )
+        # )
         return np.array([])
 
     # Run robust matching (non guided case only)
@@ -598,23 +604,23 @@ def match(
         rmatches = unfilter_matches(rmatches, m1, m2)
 
     time_total = timer() - time_start
-
-    logger.debug(
-        "Matching {} and {}.  Matcher: {} ({}) "
-        "T-desc: {:1.3f} T-robust: {:1.3f} T-total: {:1.3f} "
-        "Matches: {} Robust: {} Success: {}".format(
-            im1,
-            im2,
-            matcher_type,
-            symmetric,
-            time_2d_matching,
-            time_robust_matching,
-            time_total,
-            len(matches),
-            len(rmatches),
-            len(rmatches) >= robust_matching_min_match,
-        )
-    )
+    logger.info("Matching {} <=> {}: {} {}".format(im1, im2, len(matches), "OK" if len(rmatches) >= robust_matching_min_match else "NO"))
+    # logger.debug(
+    #     "Matching {} and {}.  Matcher: {} ({}) "
+    #     "T-desc: {:1.3f} T-robust: {:1.3f} T-total: {:1.3f} "
+    #     "Matches: {} Robust: {} Success: {}".format(
+    #         im1,
+    #         im2,
+    #         matcher_type,
+    #         symmetric,
+    #         time_2d_matching,
+    #         time_robust_matching,
+    #         time_total,
+    #         len(matches),
+    #         len(rmatches),
+    #         len(rmatches) >= robust_matching_min_match,
+    #     )
+    # )
 
     if len(rmatches) < robust_matching_min_match:
         return np.array([])

@@ -1486,7 +1486,7 @@ def grow_reconstruction(
         if not candidates:
             break
 
-        logger.info("-------------------------------------------------------")
+        # logger.info("-------------------------------------------------------")
         threshold = data.config["resection_threshold"]
         min_inliers = data.config["resection_min_inliers"]
         for image, _ in candidates:
@@ -1510,7 +1510,7 @@ def grow_reconstruction(
                 data.config,
             )
 
-            logger.info(f"Adding {' and '.join(new_shots)} to the reconstruction")
+            # logger.info(f"Adding {' and '.join(new_shots)} to the reconstruction")
             step: Dict[str, Union[List[int], List[str], int, List[int], Any]] = {
                 "images": list(new_shots),
                 "resection": resrep,
@@ -1564,7 +1564,7 @@ def grow_reconstruction(
             logger.info("Some images can not be added")
             break
 
-    logger.info("-------------------------------------------------------")
+    # logger.info("-------------------------------------------------------")
 
     align_result = align_reconstruction(reconstruction, gcp, config, bias_override=True)
     if not align_result and config["bundle_compensate_gps_bias"]:
@@ -1629,7 +1629,7 @@ def triangulation_reconstruction(
             report["steps"].append(step)
 
     logger.info("Triangulation SfM done.")
-    logger.info("-------------------------------------------------------")
+    # logger.info("-------------------------------------------------------")
     chrono.lap("compute_reconstructions")
     report["wall_times"] = dict(chrono.lap_times())
 

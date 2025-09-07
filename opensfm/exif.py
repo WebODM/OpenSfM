@@ -449,7 +449,7 @@ class EXIF:
                     s = "{0:s}.{1:s}".format(date_time, subsec_time)
                     d = datetime.datetime.strptime(s, "%Y:%m:%d %H:%M:%S.%f")
                 except ValueError:
-                    logger.debug(
+                    logger.warning(
                         'The "{1:s}" time stamp or "{2:s}" tag is invalid in '
                         'image file "{0:s}"'.format(
                             self.fileobj_name, datetime_tag, subsec_tag
@@ -464,11 +464,11 @@ class EXIF:
                             hours=-int(offset_time[0:3]), minutes=int(offset_time[4:6])
                         )
                     except (TypeError, ValueError):
-                        logger.debug(
+                        logger.warning(
                             'The "{0:s}" time zone offset in image file "{1:s}"'
                             " is invalid".format(offset_tag, self.fileobj_name)
                         )
-                        logger.debug(
+                        logger.warning(
                             'Naively assuming UTC on "{0:s}" in image file '
                             '"{1:s}"'.format(datetime_tag, self.fileobj.name))
 
@@ -519,7 +519,7 @@ class EXIF:
                     )
                     ypr[1] += 90  # DJI's values need to be offset
             except ValueError:
-                logger.debug(
+                logger.warning(
                     'Invalid yaw/pitch/roll tag in image file "{0:s}"'.format(
                         self.fileobj_name
                     )
@@ -581,7 +581,7 @@ class EXIF:
                 m = np.linalg.norm(xnp)
 
                 if m == 0:
-                    logger.debug("Cannot compute OPK angles, divider = 0")
+                    logger.warning("Cannot compute OPK angles, divider = 0")
                     return opk
 
                 # Unit vector pointing north
