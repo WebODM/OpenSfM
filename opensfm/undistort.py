@@ -181,7 +181,7 @@ def dump_camera_mapping_cache(dest_file):
 def undistort_image_and_masks(arguments) -> None:
     shot, undistorted_shots, data, udata, imageFilter = arguments
     log.setup()
-    logger.debug("Undistorting image {}".format(shot.id))
+    logger.info("Undistorting image {}".format(shot.id))
     max_size = data.config["undistorted_image_max_size"]
 
     # Undistort image
