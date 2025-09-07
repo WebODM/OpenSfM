@@ -274,7 +274,7 @@ def detect(
         logger.warning("No features found in image {}".format(image))
     else:
         logger.info(
-            "Found {} features for {} ({})".format(len(p_unsorted), image, data.feature_type().upper())
+            "Found {} features for {} ({})".format(len(p_unsorted), image, data.feature_type().upper().replace("ROOT_", ""))
         )
 
     size = p_unsorted[:, 2]
