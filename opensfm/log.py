@@ -5,7 +5,7 @@ import vmem
 
 def setup() -> None:
     logging.basicConfig(
-        format="[%(levelname)s %(asctime)s] %(message)s", level=logging.INFO, force=True, datefmt='%H:%M:%S'
+        format="[%(levelname)s] %(message)s", level=logging.INFO, force=True, datefmt='%H:%M:%S'
     )
 
 
