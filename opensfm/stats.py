@@ -133,6 +133,7 @@ def td_errors(data: DataSetBase, tracks_manager, reconstructions):
     errors = []
     reproj_threshold = data.config["triangulation_threshold"]
     min_ray_angle_degrees = data.config["triangulation_min_ray_angle"]
+    min_depth = data.config["triangulation_min_depth"]
 
     for rec in reconstructions:
         reproj_errors = rec.map.compute_reprojection_errors(
@@ -196,7 +197,7 @@ def td_errors(data: DataSetBase, tracks_manager, reconstructions):
                 if len(os) >= 2:
                     thresholds = len(os) * [reproj_threshold]
                     valid_triangulation, X = pygeometry.triangulate_bearings_midpoint(
-                        os, bs, thresholds, np.radians(min_ray_angle_degrees),
+                        os, bs, thresholds, np.radians(min_ray_angle_degrees), min_depth
                     )
                     if valid_triangulation:
                         ray_errors.append(X - p.coordinates)
