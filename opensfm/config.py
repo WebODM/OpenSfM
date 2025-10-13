@@ -196,6 +196,8 @@ class OpenSfMConfig:
     triangulation_threshold: float = 0.006
     # Minimum angle between views to accept a triangulated point
     triangulation_min_ray_angle: float = 1.0
+    # Minimum depth to accept a triangulated point
+    triangulation_min_depth: float = 0.001
     # Triangulation type : either considering all rays (FULL), or sing a RANSAC variant (ROBUST)
     triangulation_type: str = "FULL"
     # Number of LM iterations to run when refining a point
@@ -241,7 +243,7 @@ class OpenSfMConfig:
     # The default vertical standard deviation of the GCPs (in meters)
     gcp_vertical_sd: float = 0.1
     # Global weight for GCPs, expressed a ratio of the sum of (# projections) + (# shots) + (# relative motions)
-    gcp_global_weight: float = 0.01
+    gcp_global_weight: float = 0.02
     # The standard deviation of the rig translation
     rig_translation_sd: float = 0.1
     # The standard deviation of the rig rotation
@@ -278,7 +280,7 @@ class OpenSfMConfig:
     save_partial_reconstructions: bool = False
 
     ##################################
-    # Params for GPS alignment
+    # Params for GPS/GCP alignment
     ##################################
     # Use or ignore EXIF altitude tag
     use_altitude_tag: bool = False
@@ -292,6 +294,8 @@ class OpenSfMConfig:
     bundle_use_gcp: bool = True
     # Compensate GPS with a per-camera similarity transform
     bundle_compensate_gps_bias: bool = False
+    # Thrershold for the reprojection error of GCPs to be considered outliers
+    gcp_reprojection_error_threshold: float = 0.05
 
     ##################################
     # Params for rigs

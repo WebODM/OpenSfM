@@ -52,7 +52,8 @@ namespace geometry {
 std::pair<bool, Eigen::Vector3d> TriangulateBearingsDLT(
     const std::vector<Eigen::Matrix<double, 3, 4>> &Rts,
     const Eigen::Matrix<double, Eigen::Dynamic, 3> &bearings, double threshold,
-    double min_angle);
+    double min_angle,
+    double min_depth);
 
 template <class T>
 std::pair<bool, Eigen::Matrix<T, 3, 1>> TriangulateTwoBearingsMidpointSolve(
@@ -93,7 +94,9 @@ std::pair<bool, Eigen::Vector3d> TriangulateBearingsMidpoint(
     const Eigen::Matrix<double, Eigen::Dynamic, 3> &centers,
     const Eigen::Matrix<double, Eigen::Dynamic, 3> &bearings,
     const std::vector<double> &threshold_list,
-    double min_angle, double max_angle);
+    double min_angle,
+    double max_angle,
+    double min_depth);
 
 Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic>
 EpipolarAngleTwoBearingsMany(

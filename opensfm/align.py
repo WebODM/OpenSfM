@@ -126,7 +126,9 @@ def alignment_constraints(
 
     # Get Ground Control Point correspondences
     if gcp and config["bundle_use_gcp"]:
-        triangulated, measured = triangulate_all_gcp(reconstruction, gcp)
+        triangulated, measured = triangulate_all_gcp(
+            reconstruction, gcp, config["gcp_reprojection_error_threshold"]
+        )
         X.extend(triangulated)
         Xp.extend(measured)
 
@@ -435,7 +437,9 @@ def get_horizontal_and_vertical_directions(
 
 
 def triangulate_all_gcp(
-    reconstruction: types.Reconstruction, gcp: List[pymap.GroundControlPoint]
+    reconstruction: types.Reconstruction,
+    gcp: List[pymap.GroundControlPoint],
+    threshold: float,
 ) -> Tuple[List[np.ndarray], List[np.ndarray]]:
     """Group and triangulate Ground Control Points seen in 2+ images."""
     triangulated, measured = [], []
@@ -443,6 +447,7 @@ def triangulate_all_gcp(
         x = multiview.triangulate_gcp(
             point,
             reconstruction.shots,
+            threshold,
         )
         if x is not None and len(point.lla):
             point_enu = np.array(

@@ -44,7 +44,8 @@ namespace geometry {
 std::pair<bool, Eigen::Vector3d> TriangulateBearingsDLT(
     const std::vector<Eigen::Matrix<double, 3, 4>> &Rts,
     const Eigen::Matrix<double, Eigen::Dynamic, 3> &bearings, double threshold,
-    double min_angle) {
+    double min_angle,
+    double min_depth) {
   const int count = Rts.size();
   Eigen::MatrixXd world_bearings(count, 3);
   bool angle_ok = false;
@@ -70,7 +71,11 @@ std::pair<bool, Eigen::Vector3d> TriangulateBearingsDLT(
 
   for (int i = 0; i < count; ++i) {
     const Eigen::Vector3d projected = Rts[i] * X;
-    if (AngleBetweenVectors(projected, bearings.row(i)) > threshold) {
+    const Vec3d measured = bearings.row(i);
+    if (AngleBetweenVectors(projected, measured) > threshold) {
+      return std::make_pair(false, Eigen::Vector3d());
+    }
+    if (projected.dot(measured) < min_depth) {
       return std::make_pair(false, Eigen::Vector3d());
     }
   }
@@ -99,7 +104,9 @@ std::pair<bool, Eigen::Vector3d> TriangulateBearingsMidpoint(
     const Eigen::Matrix<double, Eigen::Dynamic, 3> &centers,
     const Eigen::Matrix<double, Eigen::Dynamic, 3> &bearings,
     const std::vector<double> &threshold_list,
-    double min_angle, double max_angle) {
+    double min_angle,
+    double max_angle,
+    double min_depth) {
   const int count = centers.rows();
 
   // Check angle between rays
@@ -124,6 +131,9 @@ std::pair<bool, Eigen::Vector3d> TriangulateBearingsMidpoint(
     const Eigen::Vector3d projected = X - centers.row(i).transpose();
     const Eigen::Vector3d measured = bearings.row(i);
     if (AngleBetweenVectors(projected, measured) > threshold_list[i]) {
+      return std::make_pair(false, Eigen::Vector3d());
+    }
+    if (projected.dot(measured) < min_depth) {
       return std::make_pair(false, Eigen::Vector3d());
     }
   }

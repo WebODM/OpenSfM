@@ -889,6 +889,7 @@ class TrackTriangulator:
         track: str,
         reproj_threshold: float,
         min_ray_angle_degrees: float,
+        min_depth: float,
         iterations: int,
     ) -> None:
         """Triangulate track in a RANSAC way and add point to reconstruction."""
@@ -931,6 +932,7 @@ class TrackTriangulator:
                 thresholds,
                 np.radians(min_ray_angle_degrees),
                 np.radians(180.0 - min_ray_angle_degrees),
+                min_depth,
             )
             X = pygeometry.point_refinement(os_t, bs_t, X, iterations)
 
@@ -948,6 +950,7 @@ class TrackTriangulator:
                         len(inliers) * [reproj_threshold],
                         np.radians(min_ray_angle_degrees),
                         np.radians(180.0 - min_ray_angle_degrees),
+                        min_depth,
                     )
                     new_X = pygeometry.point_refinement(
                         os[inliers], bs[inliers], X, iterations
@@ -987,6 +990,7 @@ class TrackTriangulator:
         track: str,
         reproj_threshold: float,
         min_ray_angle_degrees: float,
+        min_depth: float,
         iterations: int,
     ) -> None:
         """Triangulate track and add point to reconstruction."""
@@ -1007,6 +1011,7 @@ class TrackTriangulator:
                 thresholds,
                 np.radians(min_ray_angle_degrees),
                 np.radians(180.0 - min_ray_angle_degrees),
+                min_depth,
             )
             if valid_triangulation:
                 X = pygeometry.point_refinement(
@@ -1021,6 +1026,7 @@ class TrackTriangulator:
         track: str,
         reproj_threshold: float,
         min_ray_angle_degrees: float,
+        min_depth: float,
         iterations: int,
     ) -> None:
         """Triangulate track using DLT and add point to reconstruction."""
@@ -1039,6 +1045,7 @@ class TrackTriangulator:
                 np.asarray(bs),
                 reproj_threshold,
                 np.radians(min_ray_angle_degrees),
+                min_depth,
             )
             if e:
                 X = pygeometry.point_refinement(
@@ -1131,6 +1138,7 @@ def triangulate_shot_features(
     """Reconstruct as many tracks seen in shot_id as possible."""
     reproj_threshold = config["triangulation_threshold"]
     min_ray_angle = config["triangulation_min_ray_angle"]
+    min_depth = config["triangulation_min_depth"]
     refinement_iterations = config["triangulation_refinement_iterations"]
 
     triangulator = TrackTriangulator(
@@ -1148,11 +1156,11 @@ def triangulate_shot_features(
         if track not in reconstruction.points:
             if config["triangulation_type"] == "ROBUST":
                 triangulator.triangulate_robust(
-                    track, reproj_threshold, min_ray_angle, refinement_iterations
+                    track, reproj_threshold, min_ray_angle, min_depth, refinement_iterations
                 )
             elif config["triangulation_type"] == "FULL":
                 triangulator.triangulate(
-                    track, reproj_threshold, min_ray_angle, refinement_iterations
+                    track, reproj_threshold, min_ray_angle, min_depth, refinement_iterations
                 )
 
 
@@ -1168,6 +1176,7 @@ def retriangulate(
 
     threshold = config["triangulation_threshold"]
     min_ray_angle = config["triangulation_min_ray_angle"]
+    min_depth = config["triangulation_min_depth"]
     refinement_iterations = config["triangulation_refinement_iterations"]
 
     reconstruction.points = {}
@@ -1184,11 +1193,11 @@ def retriangulate(
     for track in tracks:
         if config["triangulation_type"] == "ROBUST":
             triangulator.triangulate_robust(
-                track, threshold, min_ray_angle, refinement_iterations
+                track, threshold, min_ray_angle, min_depth, refinement_iterations
             )
         elif config["triangulation_type"] == "FULL":
             triangulator.triangulate(
-                track, threshold, min_ray_angle, refinement_iterations
+                track, threshold, min_ray_angle, min_depth, refinement_iterations
             )
 
     report["num_points_after"] = len(reconstruction.points)
@@ -1462,7 +1471,7 @@ def grow_reconstruction(
     rig_camera_priors = data.load_rig_cameras()
 
     paint_reconstruction(data, tracks_manager, reconstruction)
-    align_reconstruction(reconstruction, gcp, config)
+    align_reconstruction(reconstruction, [], config)
 
     bundle(reconstruction, camera_priors, rig_camera_priors, None, config)
     remove_outliers(reconstruction, config)
@@ -1525,7 +1534,7 @@ def grow_reconstruction(
 
             if should_retriangulate.should():
                 logger.info("Re-triangulating")
-                align_reconstruction(reconstruction, gcp, config)
+                align_reconstruction(reconstruction, [], config)
                 b1rep = bundle(
                     reconstruction, camera_priors, rig_camera_priors, None, config
                 )
@@ -1540,7 +1549,7 @@ def grow_reconstruction(
                 should_retriangulate.done()
                 should_bundle.done()
             elif should_bundle.should():
-                align_reconstruction(reconstruction, gcp, config)
+                align_reconstruction(reconstruction, [], config)
                 brep = bundle(
                     reconstruction, camera_priors, rig_camera_priors, None, config
                 )
@@ -1619,7 +1628,7 @@ def triangulation_reconstruction(
 
             step = {}
             logger.info(f"Triangulation SfM. Inner iteration {j}, running bundle ...")
-            align_reconstruction(reconstruction, gcp, config_override)
+            align_reconstruction(reconstruction, [], config_override)
             b1rep = bundle(
                 reconstruction, camera_priors, rig_camera_priors, None, config_override
             )
@@ -1991,7 +2000,7 @@ def planar_reconstruction(
 
     logger.info("Bundle adjustment")
     
-    align_reconstruction(rec, gcp, data.config)
+    align_reconstruction(rec, [], data.config)
     bundle(rec, camera_priors, rig_camera_priors, gcp, data.config)
     remove_outliers(rec, data.config)
     retriangulate(tracks_manager, rec, data.config)
