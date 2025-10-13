@@ -95,7 +95,6 @@ std::pair<bool, Eigen::Vector3d> TriangulateBearingsMidpoint(
     const Eigen::Matrix<double, Eigen::Dynamic, 3> &bearings,
     const std::vector<double> &threshold_list,
     double min_angle,
-    double max_angle,
     double min_depth);
 
 Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic>

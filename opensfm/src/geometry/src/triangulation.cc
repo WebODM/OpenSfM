@@ -105,7 +105,6 @@ std::pair<bool, Eigen::Vector3d> TriangulateBearingsMidpoint(
     const Eigen::Matrix<double, Eigen::Dynamic, 3> &bearings,
     const std::vector<double> &threshold_list,
     double min_angle,
-    double max_angle,
     double min_depth) {
   const int count = centers.rows();
 
@@ -114,7 +113,7 @@ std::pair<bool, Eigen::Vector3d> TriangulateBearingsMidpoint(
   for (int i = 0; i < count && !angle_ok; ++i) {
     for (int j = 0; j < i && !angle_ok; ++j) {
       const auto angle = AngleBetweenVectors(bearings.row(i), bearings.row(j));
-      if (angle >= min_angle && angle <= max_angle) {
+      if (angle >= min_angle && angle <= M_PI - min_angle) {
         angle_ok = true;
       }
     }
