@@ -224,7 +224,7 @@ def gcp_errors(
     all_errors = []
 
     reference = data.load_reference()
-    gcps = data.load_ground_control_points()
+    gcps = data.load_ground_control_points(include_checkpoints=True)
     if not gcps:
         return {}
 

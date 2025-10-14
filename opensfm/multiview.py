@@ -718,5 +718,6 @@ def triangulate_gcp(
             min_depth,
         )
         if valid_triangulation:
+            X = pygeometry.point_refinement(os, bs, X, iterations)
             return X
     return None

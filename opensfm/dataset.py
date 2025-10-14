@@ -616,7 +616,7 @@ class DataSet(DataSetBase):
     def _gcp_list_file(self) -> str:
         return os.path.join(self.data_path, "gcp_list.txt")
 
-    def load_ground_control_points(self) -> List[pymap.GroundControlPoint]:
+    def load_ground_control_points(self, include_checkpoints = False) -> List[pymap.GroundControlPoint]:
         """Load ground control points."""
         exif = {image: self.load_exif(image) for image in self.images()}
 
@@ -630,7 +630,12 @@ class DataSet(DataSetBase):
             with self.io_handler.open_rt(self._ground_control_points_file()) as fin:
                 pcs = io.read_ground_control_points(fin)
 
-        return gcp + pcs
+        result = gcp + pcs
+
+        if not include_checkpoints:
+            result = [gcp for gcp in result if not gcp.id.startswith("CHK-")]
+        
+        return result
 
     def save_ground_control_points(
         self,

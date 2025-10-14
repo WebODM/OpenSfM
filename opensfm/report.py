@@ -20,8 +20,9 @@ class Report:
 
         self.mapi_light_light_green = [255, 255, 255]
         self.mapi_light_green = [0, 0, 0]
-        self.mapi_light_grey = [218, 222, 228]
+        self.mapi_light_grey = [243, 244, 247]
         self.mapi_dark_grey = [0, 0, 0]
+        self.border_color = [100, 100, 100]
 
         self.pdf = FPDF("P", "mm", "A4")
         self.pdf.add_page()
@@ -63,7 +64,7 @@ class Report:
         columns_sizes = [int(self.total_size / len(rows[0]))] * len(rows[0])
 
         if columns_names:
-            self.pdf.set_draw_color(*self.mapi_light_grey)
+            self.pdf.set_draw_color(*self.border_color)
             self.pdf.set_fill_color(*self.mapi_light_grey)
             for col, size in zip(columns_names, columns_sizes):
                 self.pdf.rect(
@@ -77,13 +78,13 @@ class Report:
                 self.pdf.cell(size, self.cell_height, col, align="L")
             self.pdf.set_xy(self.margin, self.pdf.get_y() + self.cell_height)
 
-        self.pdf.set_draw_color(*self.mapi_light_grey)
+        self.pdf.set_draw_color(*self.border_color)
         self.pdf.set_fill_color(*self.mapi_light_light_green)
 
         for row in rows:
             for i, (col, size) in enumerate(zip(row, columns_sizes)):
                 if i == 0 and row_header:
-                    self.pdf.set_draw_color(*self.mapi_light_grey)
+                    self.pdf.set_draw_color(*self.border_color)
                     self.pdf.set_fill_color(*self.mapi_light_grey)
                 self.pdf.rect(
                     self.pdf.get_x(),
@@ -94,7 +95,7 @@ class Report:
                 )
                 self.pdf.set_text_color(*self.mapi_dark_grey)
                 if i == 0 and row_header:
-                    self.pdf.set_draw_color(*self.mapi_light_grey)
+                    self.pdf.set_draw_color(*self.border_color)
                     self.pdf.set_fill_color(*self.mapi_light_light_green)
                 self.pdf.cell(size, self.cell_height, col, align="L")
             self.pdf.set_xy(self.margin, self.pdf.get_y() + self.cell_height)
@@ -304,11 +305,13 @@ class Report:
         self.pdf.set_xy(self.margin, self.pdf.get_y() + 2 * self.margin)
 
     def make_gcp_error_details(self):
-        self._make_section("Ground Control Point Error")
+        self._make_section("Ground Control Points")
 
         gcp_stats = self._read_gcp_stats_file("ground_control_points.json")
 
-        rows = []
+        gcp_rows = []
+        chk_rows = []
+
         column_names = ["ID", "Error X (m)", "Error Y (m)", "Error Z (m)"]
 
         for gcp in gcp_stats:
@@ -317,14 +320,23 @@ class Report:
             row.append(f"{gcp['error'][0]:.3f}")
             row.append(f"{gcp['error'][1]:.3f}")
             row.append(f"{gcp['error'][2]:.3f}")
+            
+            if gcp_id.startswith("CHK-"):
+                chk_rows.append(row)
+            else:
+                gcp_rows.append(row)
 
-            rows.append(row)
+        self._make_table(column_names, gcp_rows)
+        self.pdf.set_xy(self.margin, self.pdf.get_y() + self.margin / 2)
 
-        self._make_table(column_names, rows)
+        if len(chk_rows) > 0:
+            self._make_section("Checkpoints")
+            self._make_table(column_names, chk_rows)
+
         self.pdf.set_xy(self.margin, self.pdf.get_y() + self.margin / 2)
 
     def make_gps_details(self) -> None:
-        self._make_section("GPS/GCP/3D Errors Details")
+        self._make_section("GPS/GCP/3D Details")
 
         # GPS
         table_count = 0
