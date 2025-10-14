@@ -193,7 +193,7 @@ class Report:
             ["Capture End", self.stats["processing_statistics"]["end_date"]],
         ]
         self._make_table(None, rows, True)
-        self.pdf.set_xy(self.margin, self.pdf.get_y() + self.margin)
+        self.pdf.set_xy(self.margin, self.pdf.get_y() + self.margin / 2)
 
     def _has_meaningful_gcp(self) -> bool:
         return (
@@ -325,15 +325,14 @@ class Report:
                 chk_rows.append(row)
             else:
                 gcp_rows.append(row)
-
+        
         self._make_table(column_names, gcp_rows)
         self.pdf.set_xy(self.margin, self.pdf.get_y() + self.margin / 2)
 
         if len(chk_rows) > 0:
             self._make_section("Checkpoints")
             self._make_table(column_names, chk_rows)
-
-        self.pdf.set_xy(self.margin, self.pdf.get_y() + self.margin / 2)
+            self.pdf.set_xy(self.margin, self.pdf.get_y() + self.margin / 2)
 
     def make_gps_details(self) -> None:
         self._make_section("GPS/GCP/3D Details")
