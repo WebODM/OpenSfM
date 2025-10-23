@@ -508,6 +508,7 @@ class Report:
             initial = params["initial_values"]
             optimized = params["optimized_values"]
             names = [""] + list(initial.keys())
+            names = [n if n != "aspect_ratio" else "aspect" for n in names]
 
             rows = []
             rows.append(["Initial"] + [f"{x:.4f}" for x in initial.values()])
