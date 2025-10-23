@@ -724,6 +724,7 @@ def save_matchgraph(
         orientation="horizontal",
         label="Number of matches between images",
         pad=0.0,
+        ax=ax
     )
 
     with io_handler.open(os.path.join(output_path, "matchgraph.png"), "wb") as fwb:
@@ -1157,6 +1158,7 @@ def save_residual_grids(
             label="Residual Norm",
             pad=0.08,
             aspect=40,
+            ax=plt.gca()
         )
 
         plt.xticks(
