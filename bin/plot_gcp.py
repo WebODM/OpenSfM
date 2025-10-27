@@ -7,6 +7,8 @@ from typing import List
 
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib
+matplotlib.use('TkAgg')
 
 import opensfm.reconstruction as orec
 from opensfm import features
@@ -50,7 +52,7 @@ def gcp_to_ply(gcps: List[pymap.GroundControlPoint], reconstruction: types.Recon
 
         c = 255, 0, 0
         s = "{} {} {} {} {} {}".format(
-            p.value[0], p.value[1], p.value[2], int(c[0]), int(c[1]), int(c[2]))
+            p[0], p[1], p[2], int(c[0]), int(c[1]), int(c[2]))
         vertices.append(s)
 
     header = [
@@ -99,12 +101,12 @@ def main():
             image = data.load_image(observation.shot_id)
             shot = reconstruction.shots[observation.shot_id]
 
-            reprojected = shot.project(coordinates.value)
+            reprojected = shot.project(coordinates)
             annotated = observation.projection
             rpixel = pix_coords(reprojected, image)
             apixel = pix_coords(annotated, image)
 
-            n = (len(gcp.observations) + 3) / 4
+            n = int((len(gcp.observations) + 3) / 4)
             ax = plt.subplot(n, min(len(gcp.observations), 4), i + 1)
             plt.imshow(image)
             ax.title.set_text("{}".format(observation.shot_id))
