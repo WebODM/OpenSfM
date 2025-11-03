@@ -186,7 +186,10 @@ def match_candidates_by_distance(
     for i, point_id in enumerate(images_cand):
         points[i] = representative_points[point_id]
 
-    tree = spatial.cKDTree(points)
+    try:
+        tree = spatial.cKDTree(points)
+    except ValueError:
+        return set()
 
     pairs = set()
     for image_ref in images_ref:
