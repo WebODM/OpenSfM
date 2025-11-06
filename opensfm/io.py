@@ -842,6 +842,7 @@ def _read_gcp_list_lines(
 
         shot_tokens = words[5].split(None)
         shot_id = shot_tokens[0]
+        shot_id = shot_id.replace("%20", " ")
         if shot_id not in exifs:
             continue
 
