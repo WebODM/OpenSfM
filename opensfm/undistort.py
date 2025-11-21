@@ -189,6 +189,11 @@ def undistort_image_and_masks(arguments) -> None:
     if image is not None:
         if hasattr(imageFilter, '__call__'):
             image = imageFilter(shot.id, image)
+        
+        # Don't allow alpha channel
+        if len(image.shape) == 3 and image.shape[2] > 3:
+            image = image[:,:,:3]
+
         undistorted = undistort_image(
             shot, undistorted_shots, image, cv2.INTER_AREA, max_size
         )
