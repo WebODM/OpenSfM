@@ -1,10 +1,10 @@
-## This is OpenDroneMap's OpenSfM fork
+## OpenSfM
 
-This fork is pretty close to upstream OpenSfM, but includes changes specific to ODM.
+> Meta has not been actively developing [OpenSfM](https://github.com/mapillary/opensfm). We're hoping the fantastic work of OpenSfM can continue to live on here at [WebODM](https://github.com/WebODM). We're ready to support development efforts.
 
-Please note that all such changes are released under the AGPLv3 license, not BSD.
+OpenSfM ![Docker workflow](https://github.com/WebODM/opensfm/workflows/Docker%20CI/badge.svg)
 
-OpenSfM ![Docker workflow](https://github.com/mapillary/opensfm/workflows/Docker%20CI/badge.svg)
+
 =======
 
 ## Overview
@@ -29,7 +29,7 @@ Checkout this [blog post with more demos](http://blog.mapillary.com/update/2014/
 [Documentation]: https://opensfm.org/docs/ (OpenSfM documentation)
 
 ## License
-OpenSfM is BSD-style licensed, as found in the LICENSE file.  See also the Facebook Open Source [Terms of Use][] and [Privacy Policy][]
 
-[Terms of Use]: https://opensource.facebook.com/legal/terms (Facebook Open Source - Terms of Use)
-[Privacy Policy]: https://opensource.facebook.com/legal/privacy (Facebook Open Source - Privacy Policy)
+The original OpenSfM code is BSD-style licensed.
+
+The current code in this repository is AGPLv3 licensed, as found in the LICENSE file.
