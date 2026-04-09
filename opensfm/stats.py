@@ -247,7 +247,9 @@ def gcp_errors(
 
         gcp_enu = reference.to_topocentric(*gcp.lla_vec)
         e = triangulated - gcp_enu
-        all_errors.append(e)
+        
+        if not gcp.id.startswith("CHK-"):
+            all_errors.append(e)
 
         # Begin computation of GCP stats
         observations = []
