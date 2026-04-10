@@ -4,7 +4,7 @@
 
 This repository contains additional features and fixes that over the years have contributed to serve well [ODM](https://github.com/WebODM/ODM).
 
-OpenSfM ![Docker workflow](https://github.com/WebODM/opensfm/workflows/Docker%20CI/badge.svg)
+![Docker workflow](https://github.com/WebODM/opensfm/workflows/Docker%20CI/badge.svg)
 
 ## Overview
 OpenSfM is a Structure from Motion library written in Python. The library serves as a processing pipeline for reconstructing camera poses and 3D scenes from multiple images. It consists of basic modules for Structure from Motion (feature detection/matching, minimal solvers) with a focus on building a robust and scalable reconstruction pipeline. It also integrates external sensor (e.g. GPS, accelerometer) measurements for geographical alignment and robustness. A JavaScript viewer is provided to preview the models and debug the pipeline.
