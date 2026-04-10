@@ -2,7 +2,7 @@
 
 > Meta has announced that they are no longer actively developing [OpenSfM](https://github.com/mapillary/opensfm). We recommend you use the new repository at https://github.com/OpenSfM/OpenSfM.
 
-This repository contains additional features and fixes that over the years have contributed to serve well [ODM](https://github.com/WebODM/ODM). We're looking to port over these changes to the new repository very soon.
+This repository contains additional features and fixes that over the years have contributed to serve well [ODM](https://github.com/WebODM/ODM). We're looking to contribute these changes to the new repository.
 
 ![Docker workflow](https://github.com/WebODM/opensfm/workflows/Docker%20CI/badge.svg)
 
