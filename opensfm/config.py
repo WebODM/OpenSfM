@@ -367,6 +367,12 @@ class OpenSfMConfig:
     # Template to generate the relative path to a submodel images directory
     submodel_images_relpath_template: str = "submodels/submodel_%04d/images"
 
+    ##################################
+    # Params for PDF report
+    ##################################
+    report_name: str = "OpenSfM"
+    report_version: str = ""
+
     ####################################
     # ODM specific flags
     ####################################

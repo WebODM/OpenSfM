@@ -42,6 +42,9 @@ class Report:
         else:
             self.stats = self._read_stats_file("stats.json")
 
+        self.version = data.config["report_version"]
+        self.name = data.config["report_name"]
+
     def save_report(self, filename: str) -> None:
         # pyre-fixme[28]: Unexpected keyword argument `dest`.
         bytestring = self.pdf.output(dest="S")
@@ -156,21 +159,12 @@ class Report:
         self.pdf.set_xy(self.margin, self.title_size)
 
         # version number
-        version_file = os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", "..", "VERSION")
-        version = ""
-        try:
-            with open(version_file, 'r') as f:
-               version = f.read().strip()
-        except Exception as e:
-            logger.warning("Invalid version file" + version_file + ": " + str(e))
-
-        # indicate we don't know the version
-        version = "unknown" if version == "" else version
+        version = f" version {self.version}" if self.version != "" else ""
 
         self.pdf.set_font("Helvetica", "", self.small_text)
         self.pdf.set_text_color(*self.mapi_dark_grey)
         self.pdf.cell(
-            0, self.margin, f"Processed with ODM version {version}", align="R"
+            0, self.margin, f"Processed with {self.name} {version}", align="R"
         )
         self.pdf.set_xy(self.margin, self.pdf.get_y() + 2 * self.margin)
 
