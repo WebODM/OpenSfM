@@ -159,7 +159,7 @@ class Report:
         self.pdf.set_xy(self.margin, self.title_size)
 
         # version number
-        version = f" version {self.version}" if self.version != "" else ""
+        version = f"version {self.version}" if self.version != "" else ""
 
         self.pdf.set_font("Helvetica", "", self.small_text)
         self.pdf.set_text_color(*self.mapi_dark_grey)
