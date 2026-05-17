@@ -3,10 +3,8 @@ import os
 from opensfm import types
 
 import numpy as np
-import pyproj
-from opensfm import io
+from opensfm import geo, io
 from opensfm.dataset import DataSet, UndistortedDataSet
-from opensfm.geo import TopocentricConverter
 from typing import List, Sequence
 
 logger: logging.Logger = logging.getLogger(__name__)
@@ -41,8 +39,8 @@ def run_dataset(
 
     reference = data.load_reference()
 
-    projection = pyproj.Proj(proj)
-    t = _get_transformation(reference, projection, offset)
+    projection = geo.construct_proj_transformer(proj, inverse=True)
+    t = geo.get_proj_transform_matrix(reference, projection)
 
     if transformation:
         output = output or "geocoords_transformation.txt"
@@ -58,7 +56,7 @@ def run_dataset(
     if reconstruction:
         reconstructions = data.load_reconstruction()
         for r in reconstructions:
-            _transform_reconstruction(r, t)
+            geo.transform_reconstruction_with_proj(r, projection)
         output = output or "reconstruction.geocoords.json"
         data.save_reconstruction(reconstructions, output)
 
@@ -69,21 +67,6 @@ def run_dataset(
         _transform_dense_point_cloud(udata, t, output_path)
 
 
-def _get_transformation(reference: TopocentricConverter, projection: pyproj.Proj, offset) -> np.ndarray:
-    """Get the linear transform from reconstruction coords to geocoords."""
-    p = [[1, 0, 0], [0, 1, 0], [0, 0, 1], [0, 0, 0]]
-    q = [_transform(point, reference, projection) for point in p]
-
-    transformation = np.array(
-        [
-            [q[0][0] - q[3][0], q[1][0] - q[3][0], q[2][0] - q[3][0], q[3][0] - offset[0]],
-            [q[0][1] - q[3][1], q[1][1] - q[3][1], q[2][1] - q[3][1], q[3][1] - offset[1]],
-            [q[0][2] - q[3][2], q[1][2] - q[3][2], q[2][2] - q[3][2], q[3][2]],
-            [0, 0, 0, 1],
-        ]
-    )
-    return transformation
-
 
 def _write_transformation(transformation: np.ndarray, filename: str) -> None:
     """Write the 4x4 matrix transformation to a text file."""
@@ -93,8 +76,8 @@ def _write_transformation(transformation: np.ndarray, filename: str) -> None:
             fout.write(u"\n")
 
 
-def _transform(point: Sequence, reference: TopocentricConverter, projection: pyproj.Proj) -> List[float]:
-    """Transform on point from local coords to a proj4 projection."""
+def _transform(point: Sequence, reference, projection) -> List[float]:
+    """Transform one local point to a projection."""
     lat, lon, altitude = reference.to_lla(point[0], point[1], point[2])
     easting, northing = projection(lon, lat)
     return [easting, northing, altitude]
@@ -117,21 +100,6 @@ def _transform_image_positions(
     with open(output, "w") as fout:
         fout.write(text)
 
-
-def _transform_reconstruction(
-    reconstruction: types.Reconstruction, transformation: np.ndarray
-) -> None:
-    """Apply a transformation to a reconstruction in-place."""
-    A, b = transformation[:3, :3], transformation[:3, 3]
-    A1 = np.linalg.inv(A)
-
-    for shot in reconstruction.shots.values():
-        R = shot.pose.get_rotation_matrix()
-        shot.pose.set_rotation_matrix(np.dot(R, A1))
-        shot.pose.set_origin(np.dot(A, shot.pose.get_origin()) + b)
-
-    for point in reconstruction.points.values():
-        point.coordinates = list(np.dot(A, point.coordinates) + b)
 
 
 def _transform_dense_point_cloud(
