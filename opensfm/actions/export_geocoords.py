@@ -40,7 +40,7 @@ def run_dataset(
     reference = data.load_reference()
 
     projection = geo.construct_proj_transformer(proj, inverse=True)
-    t = geo.get_proj_transform_matrix(reference, projection)
+    t = geo.get_proj_transform_matrix(reference, projection, offset)
 
     if transformation:
         output = output or "geocoords_transformation.txt"
@@ -56,7 +56,7 @@ def run_dataset(
     if reconstruction:
         reconstructions = data.load_reconstruction()
         for r in reconstructions:
-            geo.transform_reconstruction_with_proj(r, projection)
+            geo.transform_reconstruction_with_proj(r, projection, offset)
         output = output or "reconstruction.geocoords.json"
         data.save_reconstruction(reconstructions, output)
 

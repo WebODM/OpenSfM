@@ -1,5 +1,6 @@
 import numpy as np
 from numpy import ndarray
+from opensfm import pygeometry
 import pyproj
 from typing import List, Tuple
 
@@ -216,8 +217,29 @@ def transform_to_proj(
     return [easting, northing, altitude]
 
 
+def _subtract_xy_offset(coordinates, offset) -> np.ndarray:
+    result = np.array(coordinates, dtype=float)
+    result[0] -= offset[0]
+    result[1] -= offset[1]
+    return result
+
+
+def _set_pose_rotation_and_origin(
+    pose: pygeometry.Pose, rotation_matrix: ndarray, origin: ndarray
+) -> None:
+    rotation_vector_pose = pygeometry.Pose()
+    rotation_vector_pose.set_rotation_matrix(rotation_matrix)
+
+    serial_pose = pygeometry.Pose()
+    serial_pose.rotation = np.array(rotation_vector_pose.rotation)
+    serial_rotation = serial_pose.get_rotation_matrix()
+
+    pose.rotation = np.array(serial_pose.rotation)
+    pose.translation = list(-np.dot(serial_rotation, origin))
+
+
 def get_proj_transform_matrix(
-    reference: TopocentricConverter, projection: pyproj.Transformer
+    reference: TopocentricConverter, projection: pyproj.Transformer, offset=(0, 0)
 ) -> ndarray:
     """Get the linear transform from reconstruction coords to geocoords."""
     p = [[1, 0, 0], [0, 1, 0], [0, 0, 1], [0, 0, 0]]
@@ -225,8 +247,8 @@ def get_proj_transform_matrix(
 
     transformation = np.array(
         [
-            [q[0][0] - q[3][0], q[1][0] - q[3][0], q[2][0] - q[3][0], q[3][0]],
-            [q[0][1] - q[3][1], q[1][1] - q[3][1], q[2][1] - q[3][1], q[3][1]],
+            [q[0][0] - q[3][0], q[1][0] - q[3][0], q[2][0] - q[3][0], q[3][0] - offset[0]],
+            [q[0][1] - q[3][1], q[1][1] - q[3][1], q[2][1] - q[3][1], q[3][1] - offset[1]],
             [q[0][2] - q[3][2], q[1][2] - q[3][2], q[2][2] - q[3][2], q[3][2]],
             [0, 0, 0, 1],
         ]
@@ -235,25 +257,37 @@ def get_proj_transform_matrix(
 
 
 def transform_reconstruction_with_proj(
-    reconstruction, transformation: pyproj.Transformer
+    reconstruction, transformation: pyproj.Transformer, offset=(0, 0)
 ) -> None:
     """Apply a projection transformer to a reconstruction in-place."""
     eps = 1e-3
     for shot in reconstruction.shots.values():
         origin = shot.pose.get_origin()
 
-        p0 = np.array(transform_to_proj(origin, reconstruction.reference, transformation))
-        px = np.array(transform_to_proj(origin + [eps, 0, 0], reconstruction.reference, transformation))
-        py = np.array(transform_to_proj(origin + [0, eps, 0], reconstruction.reference, transformation))
-        pz = np.array(transform_to_proj(origin + [0, 0, eps], reconstruction.reference, transformation))
+        p0 = _subtract_xy_offset(
+            transform_to_proj(origin, reconstruction.reference, transformation), offset
+        )
+        px = _subtract_xy_offset(
+            transform_to_proj(origin + [eps, 0, 0], reconstruction.reference, transformation),
+            offset,
+        )
+        py = _subtract_xy_offset(
+            transform_to_proj(origin + [0, eps, 0], reconstruction.reference, transformation),
+            offset,
+        )
+        pz = _subtract_xy_offset(
+            transform_to_proj(origin + [0, 0, eps], reconstruction.reference, transformation),
+            offset,
+        )
         J = np.column_stack(((px - p0) / eps, (py - p0) / eps, (pz - p0) / eps))
 
-        shot.pose.set_origin(p0)
-        shot.pose.set_rotation_matrix(
-            np.dot(shot.pose.get_rotation_matrix(), np.linalg.inv(J))
-        )
+        rotation_matrix = np.dot(shot.pose.get_rotation_matrix(), np.linalg.inv(J))
+        _set_pose_rotation_and_origin(shot.pose, rotation_matrix, p0)
 
     for point in reconstruction.points.values():
-        point.coordinates = transform_to_proj(
-            point.coordinates, reconstruction.reference, transformation
+        point.coordinates = list(
+            _subtract_xy_offset(
+                transform_to_proj(point.coordinates, reconstruction.reference, transformation),
+                offset,
+            )
         )
