@@ -1,12 +1,13 @@
+# pyre-strict
+from __future__ import annotations
+
 import itertools
 import logging
-from collections import namedtuple
 from functools import lru_cache
-from typing import Dict, List, Tuple
+from typing import Callable, Dict, List, NamedTuple, Tuple
 
 import cv2
 import networkx as nx
-from networkx.classes.reportviews import EdgeView
 import numpy as np
 import scipy.spatial as spatial
 import vmem
@@ -14,8 +15,8 @@ import copy
 import sys
 from collections import namedtuple
 from networkx.algorithms import bipartite
-from opensfm.large.lru_cache import lru_cache
-
+from networkx.classes.reportviews import EdgeView
+from numpy.typing import NDArray
 from opensfm import (
     align,
     context,
@@ -23,20 +24,23 @@ from opensfm import (
     geo,
     multiview,
     pybundle,
+    pymap,
     reconstruction,
     types,
-    pymap,
 )
+from opensfm.large.metadataset import MetaDataSet
 
 logger: logging.Logger = logging.getLogger(__name__)
 
 
-PartialReconstruction = namedtuple("PartialReconstruction", ["submodel_path", "index"])
+class PartialReconstruction(NamedTuple):
+    submodel_path: str
+    idx: int
 
 
 def kmeans(
-    samples, nclusters, max_iter: int = 100, attempts: int = 20
-) -> Tuple[np.ndarray, np.ndarray]:
+    samples: NDArray, nclusters: int, max_iter: int = 100, attempts: int = 20
+) -> Tuple[NDArray, NDArray]:
     criteria = (cv2.TERM_CRITERIA_MAX_ITER, max_iter, 1.0)
     flags = cv2.KMEANS_PP_CENTERS
 
@@ -47,8 +51,8 @@ def kmeans(
 
 
 def add_cluster_neighbors(
-    positions, labels, centers, max_distance
-) -> List[List[np.ndarray]]:
+    positions: NDArray, labels: NDArray, centers: NDArray, max_distance: float
+) -> List[List[NDArray]]:
     reflla = np.mean(positions, 0)
     reference = geo.TopocentricConverter(reflla[0], reflla[1], 0)
 
@@ -66,7 +70,8 @@ def add_cluster_neighbors(
 
         neighbors = []
         for i in cluster_indices:
-            neighbors.extend(topo_tree.query_ball_point(topocentrics[i], max_distance))
+            neighbors.extend(topo_tree.query_ball_point(
+                topocentrics[i], max_distance))
 
         cluster = list(np.union1d(cluster_indices, neighbors))
         clusters.append(cluster)
@@ -74,7 +79,9 @@ def add_cluster_neighbors(
     return clusters
 
 
-def connected_reconstructions(reconstruction_shots) -> EdgeView:
+def connected_reconstructions(
+    reconstruction_shots: Dict[PartialReconstruction, Dict[str, pymap.Shot]],
+) -> EdgeView[None]:
     g = nx.Graph()
     for r in reconstruction_shots:
         g.add_node(r, bipartite=0)
@@ -87,12 +94,13 @@ def connected_reconstructions(reconstruction_shots) -> EdgeView:
     return p.edges()
 
 
-def scale_matrix(covariance: np.ndarray) -> np.ndarray:
+def scale_matrix(covariance: NDArray) -> NDArray:
     try:
         L = np.linalg.cholesky(covariance)
     except Exception:
         logger.error(
-            "Could not compute Cholesky of covariance matrix {}".format(covariance)
+            "Could not compute Cholesky of covariance matrix {}".format(
+                covariance)
         )
 
         d = np.diag(np.diag(covariance).clip(1e-8, None))
@@ -101,9 +109,7 @@ def scale_matrix(covariance: np.ndarray) -> np.ndarray:
     return np.linalg.inv(L)
 
 
-def invert_similarity(
-    s: float, A: np.ndarray, b: np.ndarray
-) -> Tuple[float, np.ndarray, float]:
+def invert_similarity(s: float, A: NDArray, b: NDArray) -> Tuple[float, NDArray, float]:
     s_inv = 1 / s
     A_inv = A.T
     b_inv = -s_inv * A_inv.dot(b)
@@ -111,11 +117,15 @@ def invert_similarity(
     return s_inv, A_inv, b_inv
 
 
-def partial_reconstruction_name(key) -> str:
-    return str(key.submodel_path) + "_index" + str(key.index)
+def partial_reconstruction_name(key: PartialReconstruction) -> str:
+    return str(key.submodel_path) + "_index" + str(key.idx)
 
 
-def add_camera_constraints_soft(ra, reconstruction_shots, reconstruction_name) -> None:
+def add_camera_constraints_soft(
+    ra: pybundle.ReconstructionAlignment,
+    reconstruction_shots: Dict[PartialReconstruction, Dict[str, pymap.Shot]],
+    reconstruction_name: Callable[[PartialReconstruction], str],
+) -> None:
     added_shots = set()
     for key in reconstruction_shots:
         shots = reconstruction_shots[key]
@@ -129,10 +139,11 @@ def add_camera_constraints_soft(ra, reconstruction_shots, reconstruction_name) -
             t = shot.pose.translation
 
             if shot_id not in added_shots:
-                ra.add_shot(shot_name, R[0], R[1], R[2], t[0], t[1], t[2], False)
+                ra.add_shot(shot_name, R[0], R[1],
+                            R[2], t[0], t[1], t[2], False)
 
                 gps = shot.metadata.gps_position.value
-                gps_sd = shot.metadata.gps_accuracy.value
+                gps_sd = float(np.mean(shot.metadata.gps_accuracy.value))
 
                 ra.add_absolute_position_constraint(
                     shot_name, gps[0], gps[1], gps[2], gps_sd
@@ -154,7 +165,10 @@ def add_camera_constraints_soft(ra, reconstruction_shots, reconstruction_name) -
 
 
 def add_camera_constraints_hard(
-    ra, reconstruction_shots, reconstruction_name, add_common_camera_constraint
+    ra: pybundle.ReconstructionAlignment,
+    reconstruction_shots: Dict[PartialReconstruction, Dict[str, pymap.Shot]],
+    reconstruction_name: Callable[[PartialReconstruction], str],
+    add_common_camera_constraint: bool,
 ) -> None:
     for key in reconstruction_shots:
         shots = reconstruction_shots[key]
@@ -169,7 +183,7 @@ def add_camera_constraints_hard(
             ra.add_shot(shot_name, R[0], R[1], R[2], t[0], t[1], t[2], True)
 
             gps = shot.metadata.gps_position.value
-            gps_sd = shot.metadata.gps_accuracy.value
+            gps_sd = float(np.mean(shot.metadata.gps_accuracy.value))
             ra.add_relative_absolute_position_constraint(
                 rec_name, shot_name, gps[0], gps[1], gps[2], gps_sd
             )
@@ -197,7 +211,7 @@ def add_camera_constraints_hard(
 
 @lru_cache(use_memory_up_to=vmem.virtual_memory().available * 0.9)
 def load_reconstruction(
-    path, index
+    path: str, index: int
 ) -> Tuple[str, Tuple[types.Reconstruction, pymap.TracksManager]]:
     d1 = dataset.DataSet(path)
     r1 = d1.load_reconstruction()[index]
@@ -205,15 +219,18 @@ def load_reconstruction(
     return (path + ("_%s" % index)), (r1, g1)
 
 
-def add_point_constraints(ra, reconstruction_shots, reconstruction_name) -> None:
+def add_point_constraints(
+    ra: pybundle.ReconstructionAlignment,
+    reconstruction_shots: Dict[PartialReconstruction, Dict[str, pymap.Shot]],
+    reconstruction_name: Callable[[PartialReconstruction], str],
+) -> None:
     connections = connected_reconstructions(reconstruction_shots)
     for connection in connections:
-
         i1, (r1, g1) = load_reconstruction(
-            connection[0].submodel_path, connection[0].index
+            connection[0].submodel_path, connection[0].idx
         )
         i2, (r2, g2) = load_reconstruction(
-            connection[1].submodel_path, connection[1].index
+            connection[1].submodel_path, connection[1].idx
         )
 
         rec_name1 = reconstruction_name(connection[0])
@@ -245,7 +262,9 @@ def add_point_constraints(ra, reconstruction_shots, reconstruction_name) -> None
             )
 
 
-def load_reconstruction_shots(meta_data) -> Dict[str, pymap.Shot]:
+def load_reconstruction_shots(
+    meta_data: MetaDataSet,
+) -> Dict[PartialReconstruction, Dict[str, pymap.Shot]]:
     reconstruction_shots = {}
     for submodel_path in meta_data.get_submodel_paths():
         data = dataset.DataSet(submodel_path)
@@ -261,17 +280,19 @@ def load_reconstruction_shots(meta_data) -> Dict[str, pymap.Shot]:
 
 
 def align_reconstructions(
-    reconstruction_shots,
-    reconstruction_name,
-    use_points_constraints,
+    reconstruction_shots: Dict[PartialReconstruction, Dict[str, pymap.Shot]],
+    reconstruction_name: Callable[[PartialReconstruction], str],
+    use_points_constraints: bool,
     camera_constraint_type: str = "soft_camera_constraint",
-) -> Dict[str, Tuple[float, np.ndarray, float]]:
+) -> Dict[PartialReconstruction, Tuple[float, NDArray, NDArray]]:
     ra = pybundle.ReconstructionAlignment()
 
     if camera_constraint_type == "soft_camera_constraint":
-        add_camera_constraints_soft(ra, reconstruction_shots, reconstruction_name)
+        add_camera_constraints_soft(
+            ra, reconstruction_shots, reconstruction_name)
     if camera_constraint_type == "hard_camera_constraint":
-        add_camera_constraints_hard(ra, reconstruction_shots, reconstruction_name, True)
+        add_camera_constraints_hard(
+            ra, reconstruction_shots, reconstruction_name, True)
     if use_points_constraints:
         add_point_constraints(ra, reconstruction_shots, reconstruction_name)
 
@@ -291,7 +312,9 @@ def align_reconstructions(
     return transformations
 
 
-def apply_transformations(transformations) -> None:
+def apply_transformations(
+    transformations: Dict[PartialReconstruction, Tuple[float, NDArray, NDArray]],
+) -> None:
     submodels = itertools.groupby(
         sorted(transformations.keys(), key=lambda key: key.submodel_path),
         lambda key: key.submodel_path,
@@ -303,7 +326,7 @@ def apply_transformations(transformations) -> None:
 
         reconstruction = data.load_reconstruction()
         for key in keys:
-            partial_reconstruction = reconstruction[key.index]
+            partial_reconstruction = reconstruction[key.idx]
             s, A, b = transformations[key]
             align.apply_similarity(partial_reconstruction, s, A, b)
 

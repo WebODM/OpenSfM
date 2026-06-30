@@ -1,13 +1,16 @@
+# pyre-strict
 import itertools
 import logging
 import math
 import queue
+import sys
 import threading
 from timeit import default_timer as timer
-from typing import Optional, List, Dict, Any, Tuple
+from typing import Any, cast, Dict, List, Optional, Tuple, Union
 
 import numpy as np
-from opensfm import bow, features, io, log, pygeometry, upright, masking
+from numpy.typing import NDArray
+from opensfm import bow, features, io, log, masking, pygeometry, upright
 from opensfm.context import parallel_map
 from opensfm.dataset_base import DataSetBase
 
@@ -15,19 +18,46 @@ from opensfm.dataset_base import DataSetBase
 logger: logging.Logger = logging.getLogger(__name__)
 
 
+if sys.version_info >= (3, 9):
+    ProcessQueue = queue.Queue[
+        Optional[
+            Tuple[
+                str,
+                NDArray,
+                Optional[NDArray],
+                Optional[NDArray],
+                DataSetBase,
+                bool,
+            ]
+        ]
+    ]
+else:
+    ProcessQueue = queue.Queue
+
+ProducerArgs = Tuple[
+    ProcessQueue,
+    DataSetBase,
+    List[str],
+    "Counter",
+    int,
+    bool,
+]
+ConsumerArgs = ProcessQueue
+
+
 def run_features_processing(data: DataSetBase, images: List[str], force: bool) -> None:
     """Main entry point for running features extraction on a list of images."""
     default_queue_size = 10
     max_queue_size = 200
 
-    mem_available = log.memory_available()
+    mem_ceiling = data.config.get("mem_ceiling") or log.memory_available()
+
     processes = data.config["processes"]
-    if mem_available:
-        # Use 90% of available memory
-        ratio_use = 0.9
-        mem_available *= ratio_use
+    if mem_ceiling:
+        ratio_use = data.config.get("mem_ratio") or 0.9
+        mem_available = mem_ceiling * ratio_use
         logger.info(
-            f"Planning to use {mem_available} MB of RAM for both processing queue and parallel processing."
+            f"Planning to use {mem_available} MB of RAM (out of {mem_ceiling} MB RAM available) for both processing queue and parallel processing. Memory ratio is {ratio_use}."
         )
 
         # 50% for the queue / 50% for parallel processing
@@ -46,8 +76,8 @@ def run_features_processing(data: DataSetBase, images: List[str], force: bool) -
         f"Expecting to queue at most {expected_images} images while parallel processing of {processes} images."
     )
 
-    process_queue = queue.Queue(expected_images)
-    arguments: List[Tuple[str, Any]] = []
+    process_queue: ProcessQueue = queue.Queue(expected_images)
+    arguments: List[Tuple[str, Union[ProducerArgs, ConsumerArgs]]] = []
 
     if processes == 1:
         for image in images:
@@ -57,17 +87,17 @@ def run_features_processing(data: DataSetBase, images: List[str], force: bool) -
             process_queue.get()
     else:
         counter = Counter()
-        read_processes = data.config["read_processes"]
-        if 1.5 * read_processes >= processes:
-            read_processes = max(1, processes // 2)
+        io_processes = data.config["io_processes"]
+        if 1.5 * io_processes >= processes:
+            io_processes = max(1, processes // 2)
 
-        chunk_size = math.ceil(len(images) / read_processes)
+        chunk_size = math.ceil(len(images) / io_processes)
         chunks_count = math.ceil(len(images) / chunk_size)
-        read_processes = min(read_processes, chunks_count)
+        io_processes = min(io_processes, chunks_count)
 
         expected: int = len(images)
-        for i in range(read_processes):
-            images_chunk = images[i * chunk_size : (i + 1) * chunk_size]
+        for i in range(io_processes):
+            images_chunk = images[i * chunk_size: (i + 1) * chunk_size]
             arguments.append(
                 (
                     "producer",
@@ -75,7 +105,7 @@ def run_features_processing(data: DataSetBase, images: List[str], force: bool) -
                 )
             )
         for _ in range(processes):
-            arguments.append(("consumer", (process_queue)))
+            arguments.append(("consumer", process_queue))
         parallel_map(process, arguments, processes, 1)
 
 
@@ -102,7 +132,7 @@ def average_processing_size(data: DataSetBase) -> float:
 
 
 def is_high_res_panorama(
-    data: DataSetBase, image_key: str, image_array: np.ndarray
+    data: DataSetBase, image_key: str, image_array: NDArray
 ) -> bool:
     """Detect if image is a panorama."""
     exif = data.load_exif(image_key)
@@ -118,15 +148,15 @@ def is_high_res_panorama(
     return w == 2 * h or exif_pano
 
 
-class Counter(object):
+class Counter:
     """Lock-less counter from https://julien.danjou.info/atomic-lock-free-counters-in-python/
     that relies on the CPython impl. of itertools.count() that is thread-safe. Used, as for
     some reason, joblib doesn't like a good old threading.Lock (everything is stuck)
     """
 
-    def __init__(self) ->None:
+    def __init__(self) -> None:
         self.number_of_read = 0
-        self.counter = itertools.count()
+        self.counter: itertools.count[int] = itertools.count()
         self.read_lock = threading.Lock()
 
     def increment(self) -> None:
@@ -139,34 +169,38 @@ class Counter(object):
         return value
 
 
-def process(args: Tuple[str, Any]) -> None:
+def process(args: Tuple[str, Union[ProducerArgs, ConsumerArgs]]) -> None:
     process_type, real_args = args
     if process_type == "producer":
-        queue, data, images, counter, expected, force = real_args
+        queue, data, images, counter, expected, force = cast(
+            ProducerArgs, real_args)
         read_images(queue, data, images, counter, expected, force)
     if process_type == "consumer":
-        queue = real_args
+        queue = cast(ConsumerArgs, real_args)
         run_detection(queue)
 
 
 def read_images(
-    queue: queue.Queue,
+    queue: ProcessQueue,
     data: DataSetBase,
     images: List[str],
     counter: Counter,
     expected: int,
     force: bool,
 ) -> None:
-    full_queue_timeout = 3600
+    full_queue_timeout = 600
     for image in images:
-        logger.debug(f"Reading data for image {image} (queue-size={queue.qsize()})")
+        logger.info(
+            f"Reading data for image {image} (queue-size={queue.qsize()})")
         image_array = data.load_image(image)
         if data.config["features_bake_segmentation"]:
             segmentation_array = data.load_segmentation(image)
             instances_array = data.load_instances(image)
         else:
             segmentation_array, instances_array = None, None
-        args = image, image_array, segmentation_array, instances_array, data, force
+        args = (image, image_array, segmentation_array,
+                instances_array, data, force)
+
         queue.put(args, block=True, timeout=full_queue_timeout)
         counter.increment()
         if counter.value() == expected:
@@ -174,26 +208,27 @@ def read_images(
             queue.put(None)
 
 
-def run_detection(queue: queue.Queue):
+def run_detection(queue: ProcessQueue) -> None:
     while True:
         args = queue.get()
         if args is None:
             queue.put(None)
             break
         image, image_array, segmentation_array, instances_array, data, force = args
-        detect(image, image_array, segmentation_array, instances_array, data, force)
+        detect(image, image_array, segmentation_array,
+               instances_array, data, force)
         del image_array
         del segmentation_array
         del instances_array
 
 
 def bake_segmentation(
-    image: np.ndarray,
-    points: np.ndarray,
-    segmentation: Optional[np.ndarray],
-    instances: Optional[np.ndarray],
+    image: NDArray,
+    points: NDArray,
+    segmentation: Optional[NDArray],
+    instances: Optional[NDArray],
     exif: Dict[str, Any],
-) -> Tuple[Optional[np.ndarray], Optional[np.ndarray]]:
+) -> Tuple[Optional[NDArray], Optional[NDArray]]:
     exif_height, exif_width, exif_orientation = (
         exif["height"],
         exif["width"],
@@ -214,19 +249,21 @@ def bake_segmentation(
             points[:, :2],
             width,
             height,
-            exif["orientation"],
+            exif_orientation,
             new_width=new_width,
             new_height=new_height,
         ).astype(int)
+        # pyre-fixme[6]: For 2nd argument expected `None` but got
+        #  `ndarray[typing.Any, typing.Any]`.
         panoptic_data[i] = p_data[ps[:, 1], ps[:, 0]]
     return tuple(panoptic_data)
 
 
 def detect(
     image: str,
-    image_array: np.ndarray,
-    segmentation_array: Optional[np.ndarray],
-    instances_array: Optional[np.ndarray],
+    image_array: NDArray,
+    segmentation_array: Optional[NDArray],
+    instances_array: Optional[NDArray],
     data: DataSetBase,
     force: bool = False,
 ) -> None:
@@ -238,6 +275,14 @@ def detect(
     )
     has_words = not need_words or data.words_exist(image)
     has_features = data.features_exist(image)
+    if has_features:
+        try:
+            has_features &= data.load_features(image).points.shape[0] > 0
+        except Exception as e:
+            logger.error(f"Error loading features for image {image}: {e}")
+            has_features = False
+    else:
+        has_features = False
 
     if not force and has_features and has_words:
         logger.info(
@@ -250,7 +295,8 @@ def detect(
     start = timer()
 
     p_unmasked, f_unmasked, c_unmasked = features.extract_features(
-        image_array, data.config, is_high_res_panorama(data, image, image_array)
+        image_array, data.config, is_high_res_panorama(
+            data, image, image_array)
     )
 
     # Load segmentation and bake it in the data
@@ -290,7 +336,8 @@ def detect(
         )
     else:
         semantic_data = None
-    features_data = features.FeaturesData(p_sorted, f_sorted, c_sorted, semantic_data)
+    features_data = features.FeaturesData(
+        p_sorted, f_sorted, c_sorted, semantic_data)
     data.save_features(image, features_data)
 
     if need_words:

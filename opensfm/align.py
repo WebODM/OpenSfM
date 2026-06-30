@@ -1,3 +1,4 @@
+# pyre-strict
 """Tools to align a reconstruction to GPS and GCP data."""
 
 import logging
@@ -7,7 +8,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import cv2
 import numpy as np
-from opensfm import multiview, pygeometry, pymap, transformations as tf, types
+from numpy.typing import NDArray
+from opensfm import geometry, multiview, pygeometry, pymap, transformations as tf, types
 
 
 logger: logging.Logger = logging.getLogger(__name__)
@@ -19,10 +21,10 @@ def align_reconstruction(
     config: Dict[str, Any],
     use_gps: bool = True,
     bias_override: bool = False,
-) -> Optional[Tuple[float, np.ndarray, np.ndarray]]:
+) -> Optional[Tuple[float, NDArray, NDArray]]:
     """Align a reconstruction with GPS and GCP data."""
     has_scaled_rigs = any(
-        [True for ri in reconstruction.rig_instances.values() if len(ri.shots) > 1]
+        True for ri in reconstruction.rig_instances.values() if len(ri.shots) > 1
     )
     use_scale = not has_scaled_rigs
     if bias_override and config["bundle_compensate_gps_bias"]:
@@ -38,7 +40,7 @@ def align_reconstruction(
 
 
 def apply_similarity_pose(
-    pose: pygeometry.Pose, s: float, A: np.ndarray, b: np.ndarray
+    pose: pygeometry.Pose, s: float, A: NDArray, b: NDArray
 ) -> None:
     """Apply a similarity (y = s A x + b) to an object having a 'pose' member."""
     R = pose.get_rotation_matrix()
@@ -50,7 +52,7 @@ def apply_similarity_pose(
 
 
 def apply_similarity(
-    reconstruction: types.Reconstruction, s: float, A: np.ndarray, b: np.ndarray
+    reconstruction: types.Reconstruction, s: float, A: NDArray, b: NDArray
 ) -> None:
     """Apply a similarity (y = s A x + b) to a reconstruction.
 
@@ -69,7 +71,8 @@ def apply_similarity(
 
     # Scale rig cameras
     for rig_camera in reconstruction.rig_cameras.values():
-        apply_similarity_pose(rig_camera.pose, s, np.eye(3), np.array([0, 0, 0]))
+        apply_similarity_pose(rig_camera.pose, s,
+                              np.eye(3), np.array([0, 0, 0]))
 
 
 def compute_reconstruction_similarity(
@@ -78,12 +81,13 @@ def compute_reconstruction_similarity(
     config: Dict[str, Any],
     use_gps: bool,
     use_scale: bool,
-) -> Optional[Tuple[float, np.ndarray, np.ndarray]]:
+) -> Optional[Tuple[float, NDArray, NDArray]]:
     """Compute similarity so that the reconstruction is aligned with GPS and GCP data.
 
     Config parameter `align_method` can be used to choose the alignment method.
     Accepted values are
-     - navie: does a direct 3D-3D fit
+     - naive: does a direct 3D-3D fit
+     - auto: automatically picks between naive and orientation_prior, depending on the distribution of the GPS/GCP data
      - orientation_prior: assumes a particular camera orientation
     """
     align_method = config["align_method"]
@@ -96,11 +100,15 @@ def compute_reconstruction_similarity(
         )
     res = None
     if align_method == "orientation_prior":
+        plane = detect_orientation_prior(reconstruction, config)
         res = compute_orientation_prior_similarity(
-            reconstruction, config, gcp, use_gps, use_scale
+            reconstruction, config, gcp, use_gps, use_scale, plane
         )
     elif align_method == "naive":
-        res = compute_naive_similarity(config, reconstruction, gcp, use_gps, use_scale)
+        res = compute_naive_similarity(
+            config, reconstruction, gcp, use_gps, use_scale)
+    elif align_method == "none":
+        return None
 
     if not res:
         return None
@@ -119,11 +127,10 @@ def alignment_constraints(
     reconstruction: types.Reconstruction,
     gcp: List[pymap.GroundControlPoint],
     use_gps: bool,
-) -> Tuple[List[np.ndarray], List[np.ndarray]]:
+) -> Tuple[List[NDArray], List[NDArray]]:
     """Gather alignment constraints to be used by checking bundle_use_gcp and bundle_use_gps."""
 
     X, Xp = [], []
-
     # Get Ground Control Point correspondences
     if gcp and config["bundle_use_gcp"]:
         triangulated, measured = triangulate_all_gcp(
@@ -131,9 +138,8 @@ def alignment_constraints(
         )
         X.extend(triangulated)
         Xp.extend(measured)
-
     # Get camera center correspondences
-    if use_gps and config["bundle_use_gps"]:
+    elif use_gps and config["bundle_use_gps"]:
         for rig_instance in reconstruction.rig_instances.values():
             gpses = [
                 shot.metadata.gps_position.value
@@ -143,7 +149,6 @@ def alignment_constraints(
             if len(gpses) > 0:
                 X.append(rig_instance.pose.get_origin())
                 Xp.append(np.average(gpses, axis=0))
-
     return X, Xp
 
 
@@ -159,6 +164,10 @@ def detect_alignment_constraints(
     """
 
     X, Xp = alignment_constraints(config, reconstruction, gcp, use_gps)
+    if len(X) == 0:
+        logger.warning(
+            "Cannot find any GPS or GCP constraint. Using no alignment.")
+        return "none"
     if len(X) < 3:
         return "orientation_prior"
 
@@ -191,7 +200,7 @@ def compute_naive_similarity(
     gcp: List[pymap.GroundControlPoint],
     use_gps: bool,
     use_scale: bool,
-) -> Optional[Tuple[float, np.ndarray, np.ndarray]]:
+) -> Optional[Tuple[float, NDArray, NDArray]]:
     """Compute similarity with GPS and GCP data using direct 3D-3D matches."""
     X, Xp = alignment_constraints(config, reconstruction, gcp, use_gps)
 
@@ -215,7 +224,8 @@ def compute_naive_similarity(
 
     # Will be up to some unknown rotation
     if len(X) == 2:
-        logger.warning("Only 2 constraints. Will be up to some unknown rotation.")
+        logger.warning(
+            "Only 2 constraints. Will be up to some unknown rotation.")
         X.append(X[1])
         Xp.append(Xp[1])
 
@@ -236,7 +246,8 @@ def compute_orientation_prior_similarity(
     gcp: List[pymap.GroundControlPoint],
     use_gps: bool,
     use_scale: bool,
-) -> Optional[Tuple[float, np.ndarray, np.ndarray]]:
+    plane: NDArray,
+) -> Optional[Tuple[float, NDArray, NDArray]]:
     """Compute similarity with GPS data assuming particular a camera orientation.
 
     In some cases, using 3D-3D matches directly fails to find proper
@@ -251,10 +262,9 @@ def compute_orientation_prior_similarity(
      - horizontal: assumes cameras are looking towards the horizon
      - vertical: assumes cameras are looking down towards the ground
     """
-    p = estimate_ground_plane(reconstruction, config)
-    if p is None:
+    if plane is None:
         return None
-    Rplane = multiview.plane_horizontalling_rotation(p)
+    Rplane = multiview.plane_horizontalling_rotation(plane)
     if Rplane is None:
         return None
 
@@ -280,7 +290,7 @@ def compute_orientation_prior_similarity(
 
         # Clamp shots pair scale to 1km, so the
         # optimizer can still catch-up acceptable error
-        max_scale = 1000
+        max_scale = 1000.0
         current_scale = np.linalg.norm(b)
         if two_shots and current_scale > max_scale:
             b = max_scale * b / current_scale
@@ -311,7 +321,7 @@ def set_gps_bias(
     config: Dict[str, Any],
     gcp: List[pymap.GroundControlPoint],
     use_scale: bool,
-) -> Optional[Tuple[float, np.ndarray, np.ndarray]]:
+) -> Optional[Tuple[float, NDArray, NDArray]]:
     """Compute and set the bias transform of the GPS coordinate system wrt. to the GCP one."""
 
     # Compute similarity ('gps_bias') that brings the reconstruction on the GCPs ONLY
@@ -319,7 +329,8 @@ def set_gps_bias(
         reconstruction, gcp, config, False, use_scale
     )
     if not gps_bias:
-        logger.warning("Cannot align on GCPs only, GPS bias won't be compensated.")
+        logger.warning(
+            "Cannot align on GCPs only, GPS bias won't be compensated.")
         return None
 
     # Align the reconstruction on GCPs ONLY
@@ -337,7 +348,6 @@ def set_gps_bias(
 
     per_camera_transform = {}
     for camera_id, shots_id in per_camera_shots.items():
-
         # As we re-use 'compute_reconstruction_similarity', we need to construct a 'Reconstruction'
         subrec = types.Reconstruction()
         subrec.add_camera(reconstruction.cameras[camera_id])
@@ -347,8 +357,9 @@ def set_gps_bias(
             subrec, [], config, True, use_scale
         )
 
-    if any([True for x in per_camera_transform.values() if not x]):
-        logger.warning("Cannot compensate some shots, GPS bias won't be compensated.")
+    if any(True for x in per_camera_transform.values() if not x):
+        logger.warning(
+            "Cannot compensate some shots, GPS bias won't be compensated.")
     else:
         for camera_id, transform in per_camera_transform.items():
             s, A, b = transform
@@ -363,15 +374,92 @@ def set_gps_bias(
     return gps_bias
 
 
+def fit_plane_from_opk(
+    verticals: List[NDArray], origins: List[NDArray]
+) -> Optional[NDArray]:
+    """Fit a ground plane from OPK-derived vertical directions and shot origins.
+
+    Uses a RANSAC loop with a 30-degree angle threshold to find the
+    largest consensus set of verticals, then averages them into a plane normal.
+    The plane offset is determined by projecting shot origins onto the normal.
+    """
+    verticals_arr = np.array(verticals)
+    angle_threshold = math.radians(15)
+    cos_threshold = math.cos(angle_threshold)
+
+    best_inliers: List[int] = []
+    for i in range(len(verticals_arr)):
+        candidate = verticals_arr[i]
+        candidate = candidate / np.linalg.norm(candidate)
+        dots = verticals_arr @ candidate
+        inliers = [j for j, d in enumerate(dots) if d >= cos_threshold]
+        if len(inliers) > len(best_inliers):
+            best_inliers = inliers
+
+    if not best_inliers:
+        return None
+
+    avg_normal = np.mean(verticals_arr[best_inliers], axis=0)
+    norm = np.linalg.norm(avg_normal)
+    if norm < 1e-10:
+        return None
+    avg_normal /= norm
+
+    # Ground plane altitude from shot origins projected onto the normal
+    origins_arr = np.array(origins)
+    altitude = float(np.mean(origins_arr @ avg_normal))
+    return np.append(avg_normal, -altitude)
+
+
+def detect_orientation_prior(
+    reconstruction: types.Reconstruction, config: Dict[str, Any]
+) -> Optional[NDArray]:
+    """Detect plane orientation from OPK data or fallback."""
+    verticals = []
+    origins = []
+    has_opk = False
+    for shot in reconstruction.shots.values():
+        origins.append(shot.pose.get_origin())
+        if shot.metadata.opk_angles.has_value:
+            has_opk = True
+            opk = shot.metadata.opk_angles.value
+            R_opk = geometry.rotation_from_opk(
+                math.radians(opk[0]), math.radians(
+                    opk[1]), math.radians(opk[2])
+            )
+            R_pose = shot.pose.get_rotation_matrix()
+            # R_opk[:,2] is ENU Up [0,0,1] in camera frame;
+            # R_pose.T brings it from camera frame to reconstruction frame.
+            verticals.append(R_pose.T @ R_opk[:, 2])
+
+    if has_opk and len(verticals) > 0:
+        plane = fit_plane_from_opk(verticals, origins)
+        if plane is not None:
+            return plane
+
+    return estimate_ground_plane(reconstruction, config)
+
+
 def estimate_ground_plane(
     reconstruction: types.Reconstruction, config: Dict[str, Any]
-) -> Optional[np.ndarray]:
+) -> Optional[NDArray]:
     """Estimate ground plane orientation.
 
     It assumes cameras are all at a similar height and uses the
     align_orientation_prior option to enforce cameras to look
     horizontally or vertically.
     """
+    if detect_alignment_constraints(config, reconstruction, [], True) == "naive":
+        ground_points = []
+        for shot in reconstruction.shots.values():
+            ground_points.append(shot.pose.get_origin())
+        ground_points_arr = np.array(ground_points)
+        ground_points_arr -= ground_points_arr.mean(axis=0)
+        try:
+            return multiview.fit_plane(ground_points_arr, None, None)
+        except ValueError:
+            pass
+
     orientation_type = config["align_orientation_prior"]
     onplane, verticals, ground_points = [], [], []
     for shot in reconstruction.shots.values():
@@ -408,8 +496,8 @@ def estimate_ground_plane(
 
 
 def get_horizontal_and_vertical_directions(
-    R: np.ndarray, orientation: int
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    R: NDArray, orientation: int
+) -> Tuple[NDArray, NDArray, NDArray]:
     """Get orientation vectors from camera rotation matrix and orientation tag.
 
     Return a 3D vectors pointing to the positive XYZ directions of the image.
@@ -432,7 +520,8 @@ def get_horizontal_and_vertical_directions(
         return -R[1, :], -R[0, :], -R[2, :]
     if orientation == 8:
         return R[1, :], -R[0, :], R[2, :]
-    logger.error("unknown orientation {0}. Using 1 instead".format(orientation))
+    logger.error(
+        "unknown orientation {0}. Using 1 instead".format(orientation))
     return R[0, :], R[1, :], R[2, :]
 
 
@@ -440,16 +529,24 @@ def triangulate_all_gcp(
     reconstruction: types.Reconstruction,
     gcp: List[pymap.GroundControlPoint],
     threshold: float,
-) -> Tuple[List[np.ndarray], List[np.ndarray]]:
-    """Group and triangulate Ground Control Points seen in 2+ images."""
+) -> Tuple[List[NDArray], List[NDArray]]:
+    """Group and triangulate Ground Control Points seen in 2+ images.
+
+    Only points with role OPTIMIZATION are used; check points (METRICS_ONLY)
+    are skipped.
+    """
     triangulated, measured = [], []
     for point in gcp:
-        x = multiview.triangulate_gcp(
+        # Skip check points — they are not used for alignment
+        if point.role == pymap.GroundControlPointRole.CHECKPOINT:
+            continue
+        result = multiview.triangulate_gcp(
             point,
             reconstruction.shots,
             threshold,
         )
-        if x is not None and len(point.lla):
+        if result is not None and len(point.lla):
+            x, _inliers = result
             point_enu = np.array(
                 reconstruction.reference.to_topocentric(*point.lla_vec)
             )

@@ -1,8 +1,10 @@
+# pyre-strict
+import argparse
+
 from opensfm.actions import extract_metadata
+from opensfm.dataset import DataSet
 
 from . import command
-import argparse
-from opensfm.dataset import DataSet
 
 
 class Command(command.CommandBase):
@@ -10,7 +12,11 @@ class Command(command.CommandBase):
     help = "Extract metadata from images' EXIF tag"
 
     def run_impl(self, dataset: DataSet, args: argparse.Namespace) -> None:
-        extract_metadata.run_dataset(dataset)
+        extract_metadata.run_dataset(dataset, force=args.force)
 
     def add_arguments_impl(self, parser: argparse.ArgumentParser) -> None:
-        pass
+        parser.add_argument(
+            "--force",
+            action="store_true",
+            help="Re-extract EXIF even when cached exif files already exist.",
+        )

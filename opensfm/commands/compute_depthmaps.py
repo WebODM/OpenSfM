@@ -1,13 +1,15 @@
+# pyre-strict
+import argparse
+
 from opensfm.actions import compute_depthmaps
+from opensfm.dataset import DataSet
 
 from . import command
-import argparse
-from opensfm.dataset import DataSet
 
 
 class Command(command.CommandBase):
     name = "compute_depthmaps"
-    help = "Compute depthmap"
+    help = "Dense stage 2: compute raw + clean depthmaps (needs dense_clustering)"
 
     def run_impl(self, dataset: DataSet, args: argparse.Namespace) -> None:
         compute_depthmaps.run_dataset(dataset, args.subfolder, args.interactive)

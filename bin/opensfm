@@ -3,10 +3,26 @@ set -e
 
 DIR=$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )
 
-if [ -e "$(command -v python3)" ]; then
+if [ -n "$CONDA_PREFIX" ] && [ -x "$CONDA_PREFIX/bin/python" ]; then
+    PYTHON="$CONDA_PREFIX/bin/python"
+elif [ -x "$(command -v python)" ]; then
+    PYTHON=python
+elif [ -x "$(command -v python3)" ]; then
     PYTHON=python3
 else
-    PYTHON=python
+    echo "Could not find a Python interpreter." >&2
+    exit 1
+fi
+
+if [ "$(uname)" == "Linux" ]; then
+   if [ -f "$CONDA_PREFIX/lib/libtcmalloc.so" ]; then
+      export LD_PRELOAD=$CONDA_PREFIX/lib/libtcmalloc.so
+   elif [ -f "/usr/lib/x86_64-linux-gnu/libtcmalloc.so" ]; then
+      export LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libtcmalloc.so
+   else
+      echo "Can't find libtcmalloc. tcmalloc is mandatory for running OpenSfM."
+      exit 1
+   fi
 fi
 
 "$PYTHON" "$DIR"/opensfm_main.py "$@"

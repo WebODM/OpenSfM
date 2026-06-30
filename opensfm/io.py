@@ -1,15 +1,27 @@
+# pyre-strict
 import json
 import logging
 import os
 import shutil
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Union, Dict, Any, Iterable, List, IO, Tuple, TextIO, Optional
+from typing import (
+    Any,
+    BinaryIO,
+    Dict,
+    IO,
+    Iterable,
+    List,
+    Optional,
+    TextIO,
+    Tuple,
+    Union,
+)
 
 import cv2
 import numpy as np
 import pyproj
-from numpy import ndarray
+from numpy.typing import NDArray
 from opensfm import context, features, geo, pygeometry, pymap, types
 from PIL import Image
 
@@ -19,6 +31,8 @@ import sys
 from rasterio.plot import reshape_as_image
 import warnings
 warnings.filterwarnings("ignore", category=rasterio.errors.NotGeoreferencedWarning)
+
+JSONType = Any  # pyre-ignore[33]
 
 
 logger: logging.Logger = logging.getLogger(__name__)
@@ -344,7 +358,7 @@ def cameras_from_json(obj: Dict[str, Any]) -> Dict[str, pygeometry.Camera]:
     return cameras
 
 
-def camera_to_json(camera) -> Dict[str, Any]:
+def camera_to_json(camera: pygeometry.Camera) -> Dict[str, Any]:
     """
     Write camera to a json object
     """
@@ -531,7 +545,7 @@ def pymap_metadata_to_json(metadata: pymap.ShotMeasurements) -> Dict[str, Any]:
     if metadata.capture_time.has_value:
         obj["capture_time"] = metadata.capture_time.value
     if metadata.gps_accuracy.has_value:
-        obj["gps_dop"] = metadata.gps_accuracy.value
+        obj["gps_accuracy"] = list(metadata.gps_accuracy.value)
     if metadata.gps_position.has_value:
         obj["gps_position"] = list(metadata.gps_position.value)
     if metadata.gravity_down.has_value:
@@ -548,6 +562,12 @@ def pymap_metadata_to_json(metadata: pymap.ShotMeasurements) -> Dict[str, Any]:
             obj["compass"] = {"accuracy": metadata.compass_accuracy.value}
     if metadata.sequence_key.has_value:
         obj["skey"] = metadata.sequence_key.value
+    if metadata.opk_angles.has_value:
+        obj["opk_angles"] = list(metadata.opk_angles.value)
+    if metadata.opk_accuracy.has_value:
+        obj["opk_accuracy"] = metadata.opk_accuracy.value
+    if metadata.relative_altitude.has_value:
+        obj["relative_altitude"] = metadata.relative_altitude.value
     return obj
 
 
@@ -557,8 +577,12 @@ def json_to_pymap_metadata(obj: Dict[str, Any]) -> pymap.ShotMeasurements:
         metadata.orientation.value = obj.get("orientation")
     if obj.get("capture_time") is not None:
         metadata.capture_time.value = obj.get("capture_time")
-    if obj.get("gps_dop") is not None:
-        metadata.gps_accuracy.value = obj.get("gps_dop")
+    if obj.get("gps_accuracy") is not None:
+        metadata.gps_accuracy.value = np.array(
+            obj["gps_accuracy"], dtype=float)
+    elif obj.get("gps_dop") is not None:
+        dop = float(obj["gps_dop"])
+        metadata.gps_accuracy.value = np.array([dop, dop, dop])
     if obj.get("gps_position") is not None:
         metadata.gps_position.value = obj.get("gps_position")
     if obj.get("skey") is not None:
@@ -571,6 +595,12 @@ def json_to_pymap_metadata(obj: Dict[str, Any]) -> pymap.ShotMeasurements:
             metadata.compass_angle.value = compass["angle"]
         if "accuracy" in compass:
             metadata.compass_accuracy.value = compass["accuracy"]
+    if obj.get("opk_angles") is not None:
+        metadata.opk_angles.value = obj.get("opk_angles")
+    if obj.get("opk_accuracy") is not None:
+        metadata.opk_accuracy.value = obj.get("opk_accuracy")
+    if obj.get("relative_altitude") is not None:
+        metadata.relative_altitude.value = obj.get("relative_altitude")
     return metadata
 
 
@@ -606,7 +636,8 @@ def reconstruction_to_json(reconstruction: types.Reconstruction) -> Dict[str, An
     if len(reconstruction.rig_instances):
         obj["rig_instances"] = {}
     for rig_instance in reconstruction.rig_instances.values():
-        obj["rig_instances"][rig_instance.id] = rig_instance_to_json(rig_instance)
+        obj["rig_instances"][rig_instance.id] = rig_instance_to_json(
+            rig_instance)
 
     # Extract shots
     for shot in reconstruction.shots.values():
@@ -663,7 +694,7 @@ def bias_to_json(bias: pygeometry.Similarity) -> Dict[str, Any]:
 
 
 def rig_cameras_to_json(
-    rig_cameras: Dict[str, pymap.RigCamera]
+    rig_cameras: Dict[str, pymap.RigCamera],
 ) -> Dict[str, Dict[str, Any]]:
     """
     Write rig cameras to a json object
@@ -686,7 +717,7 @@ def camera_from_vector(
         focal, k1, k2 = parameters
         camera = pygeometry.Camera.create_perspective(focal, k1, k2)
     elif projection_type == "brown":
-        fx, fy, cx, cy, k1, k2, p1, p2, k3 = parameters
+        fx, fy, cx, cy, k1, k2, k3, p1, p2 = parameters
         camera = pygeometry.Camera.create_brown(
             fx, fy / fx, np.array([cx, cy]), np.array([k1, k2, k3, p1, p2])
         )
@@ -701,7 +732,8 @@ def camera_from_vector(
     elif projection_type == "fisheye62":
         fx, fy, cx, cy, k1, k2, k3, k4, k5, k6, p1, p2 = parameters
         camera = pygeometry.Camera.create_fisheye62(
-            fx, fy / fx, np.array([cx, cy]), np.array([k1, k2, k3, k4, k5, k6, p1, p2])
+            fx, fy / fx, np.array([cx, cy]), np.array([k1,
+                                                       k2, k3, k4, k5, k6, p1, p2])
         )
     elif projection_type == "fisheye624":
         fx, fy, cx, cy, k1, k2, k3, k4, k5, k6, p1, p2, s0, s1, s2, s3 = parameters
@@ -746,9 +778,9 @@ def camera_to_vector(camera: pygeometry.Camera) -> List[float]:
             camera.principal_point[1],
             camera.k1,
             camera.k2,
+            camera.k3,
             camera.p1,
             camera.p2,
-            camera.k3,
         ]
     elif camera.projection_type == "fisheye":
         parameters = [camera.focal, camera.k1, camera.k2]
@@ -829,97 +861,15 @@ def camera_to_vector(camera: pygeometry.Camera) -> List[float]:
     return parameters
 
 
-def _read_gcp_list_lines(
-    lines: Iterable[str],
-    projection,
-    exifs: Dict[str, Dict[str, Any]],
-) -> List[pymap.GroundControlPoint]:
-    points = {}
-    for line in lines:
-        words = line.split(None, 6)
-        easting, northing, alt, pixel_x, pixel_y = map(float, words[:5])
-        key = (easting, northing, alt)
+def read_gcp_projection_string(fileobj: IO[str]) -> Optional[str]:
+    """Read the projection string from a gcp_list.txt file.
 
-        shot_tokens = words[5].split(None)
-        shot_id = shot_tokens[0]
-        shot_id = shot_id.replace("%20", " ")
-        if shot_id not in exifs:
-            continue
-
-        if key in points:
-            point = points[key]
-        else:
-            # Convert 3D coordinates
-            if np.isnan(alt):
-                alt = 0
-                has_altitude = False
-            else:
-                has_altitude = True
-            if projection is not None:
-                lat, lon = projection.transform(easting, northing)
-            else:
-                lon, lat = easting, northing
-
-            point = pymap.GroundControlPoint()
-            if len(words) > 6:
-                point.id = words[6].strip()
-            else:
-                point.id = "GCP-%d" % len(points)
-
-            point.lla = {"latitude": lat, "longitude": lon, "altitude": alt}
-            point.has_altitude = has_altitude
-
-            points[key] = point
-
-        # Convert 2D coordinates
-        d = exifs[shot_id]
-        coordinates = features.normalized_image_coordinates(
-            np.array([[pixel_x, pixel_y]]), d["width"], d["height"]
-        )[0]
-
-        o = pymap.GroundControlPointObservation()
-        o.shot_id = shot_id
-        o.projection = coordinates
-        point.add_observation(o)
-
-    return list(points.values())
-
-
-def _parse_utm_projection_string(line: str) -> str:
-    """Convert strings like 'WGS84 UTM 32N' to a proj4 definition."""
-    words = line.lower().split()
-    assert len(words) == 3
-    zone = line.split()[2].upper()
-    if zone[-1] == "N":
-        zone_number = int(zone[:-1])
-        zone_hemisphere = "north"
-    elif zone[-1] == "S":
-        zone_number = int(zone[:-1])
-        zone_hemisphere = "south"
-    else:
-        zone_number = int(zone)
-        zone_hemisphere = "north"
-    s = "+proj=utm +zone={} +{} +ellps=WGS84 +datum=WGS84 +units=m +no_defs"
-    return s.format(zone_number, zone_hemisphere)
-
-
-def _parse_projection(line: str) -> Optional[pyproj.Transformer]:
-    """Build a proj4 from the GCP format line."""
-    crs_4326 = pyproj.CRS.from_epsg(4326)
-    if line.strip() == "WGS84":
-        return None
-    elif line.upper().startswith("WGS84 UTM"):
-        return pyproj.Transformer.from_proj(
-            pyproj.CRS(_parse_utm_projection_string(line)), crs_4326
-        )
-    elif "+proj" in line:
-        return pyproj.Transformer.from_proj(pyproj.CRS(line), crs_4326)
-    elif line.upper().startswith("EPSG:"):
-        return pyproj.Transformer.from_proj(
-            pyproj.CRS.from_epsg(int(line.split(":")[1])), crs_4326
-        )
-    else:
-        raise ValueError("Un-supported geo system definition: {}".format(line))
+    Returns None for WGS84 / EPSG:4326 (identity), a PROJ string otherwise.
+    """
+    for line in fileobj:
+        if _valid_gcp_line(line):
+            return pymap.parse_gcp_projection_string(line.strip())
+    return None
 
 
 def _valid_gcp_line(line: str) -> bool:
@@ -927,82 +877,59 @@ def _valid_gcp_line(line: str) -> bool:
     return stripped != "" and stripped[0] != "#"
 
 
-def read_gcp_list(fileobj, exif: Dict[str, Any]) -> List[pymap.GroundControlPoint]:
-    """Read a ground control points from a gcp_list.txt file.
+def read_gcp_list(
+    fileobj: IO[str], exif: Dict[str, Any], cdn_enabled: bool = False, grid_cache_dir: str = ""
+) -> List[pymap.GroundControlPoint]:
+    """Read ground control points from a gcp_list.txt file.
 
-    It requires the points to be in the WGS84 lat, lon, alt format.
-    If reference is None, topocentric data won't be initialized.
+    The C++ reader handles CRS transformation internally via PROJ.
     """
-    all_lines = fileobj.readlines()
-    lines = iter(filter(_valid_gcp_line, all_lines))
-    projection = _parse_projection(next(lines))
-    points = _read_gcp_list_lines(lines, projection, exif)
-    return points
+    content = fileobj.read()
+
+    # Build image_widths dict expected by the C++ reader.
+    image_widths: Dict[str, Tuple[int, int]] = {}
+    for shot_id, exif_data in exif.items():
+        image_widths[shot_id] = (exif_data["width"], exif_data["height"])
+
+    return pymap.read_gcp_list(content, image_widths, cdn_enabled, grid_cache_dir)
 
 
-def read_ground_control_points(fileobj: IO) -> List[pymap.GroundControlPoint]:
+def write_gcp_list(
+    gcp: List[pymap.GroundControlPoint],
+    fileobj: IO[str],
+    crs: str,
+    exif: Dict[str, Any],
+    cdn_enabled: bool = False,
+    grid_cache_dir: str = "",
+) -> None:
+    """Write ground control points to a gcp_list.txt file."""
+    image_widths: Dict[str, Tuple[int, int]] = {}
+    for shot_id, exif_data in exif.items():
+        image_widths[shot_id] = (exif_data["width"], exif_data["height"])
+
+    content = pymap.write_gcp_list(
+        gcp, crs, image_widths, cdn_enabled, grid_cache_dir)
+    fileobj.write(content)
+
+
+def read_ground_control_points(
+    fileobj: IO[str], cdn_enabled: bool = False, grid_cache_dir: str = ""
+) -> Tuple[List[pymap.GroundControlPoint], str]:
     """Read ground control points from json file"""
-    obj = json_load(fileobj)
-
-    points = []
-    for point_dict in obj["points"]:
-        point = pymap.GroundControlPoint()
-        point.id = point_dict["id"]
-        lla = point_dict.get("position")
-        if lla:
-            point.lla = lla
-            point.has_altitude = "altitude" in point.lla
-
-        observations = []
-        observing_images = set()
-        for o_dict in point_dict["observations"]:
-            o = pymap.GroundControlPointObservation()
-            o.shot_id = o_dict["shot_id"]
-            if o.shot_id in observing_images:
-                logger.warning(
-                    "GCP {} has multiple observations in image {}".format(
-                        point.id, o.shot_id
-                    )
-                )
-            observing_images.add(o.shot_id)
-            if "projection" in o_dict:
-                o.projection = np.array(o_dict["projection"])
-            observations.append(o)
-        point.observations = observations
-        points.append(point)
-    return points
+    content = fileobj.read()
+    return pymap.read_gcp_json(content, cdn_enabled, grid_cache_dir)
 
 
 def write_ground_control_points(
     gcp: List[pymap.GroundControlPoint],
-    fileobj: IO,
+    fileobj: IO[str],
+    crs: str = "",
+    cdn_enabled: bool = False,
+    grid_cache_dir: str = "",
 ) -> None:
     """Write ground control points to json file."""
-    obj = {"points": []}
-
-    for point in gcp:
-        point_obj = {}
-        point_obj["id"] = point.id
-        if point.lla:
-            point_obj["position"] = {
-                "latitude": point.lla["latitude"],
-                "longitude": point.lla["longitude"],
-            }
-            if point.has_altitude:
-                point_obj["position"]["altitude"] = point.lla["altitude"]
-
-        point_obj["observations"] = []
-        for observation in point.observations:
-            point_obj["observations"].append(
-                {
-                    "shot_id": observation.shot_id,
-                    "projection": tuple(observation.projection),
-                }
-            )
-
-        obj["points"].append(point_obj)
-
-    json_dump(obj, fileobj)
+    content = pymap.write_gcp_json(gcp, crs, cdn_enabled, grid_cache_dir)
+    fileobj.write(content)
 
 
 def json_dump_kwargs(minify: bool = False) -> Dict[str, Any]:
@@ -1013,20 +940,21 @@ def json_dump_kwargs(minify: bool = False) -> Dict[str, Any]:
     return {"indent": indent, "ensure_ascii": False, "separators": separators}
 
 
-def json_dump(data, fout: IO[str], minify: bool = False) -> None:
+def json_dump(data: JSONType, fout: IO[str], minify: bool = False) -> None:
     kwargs = json_dump_kwargs(minify)
     return json.dump(data, fout, **kwargs)
 
 
-def json_dumps(data, minify: bool = False) -> str:
+def json_dumps(data: JSONType, minify: bool = False) -> str:
     kwargs = json_dump_kwargs(minify)
     return json.dumps(data, **kwargs)
 
-def json_load(fp: Union[IO[str], IO[bytes]]) -> Any:
+
+def json_load(fp: Union[IO[str], IO[bytes]]) -> JSONType:
     return json.load(fp)
 
 
-def json_loads(text: Union[str, bytes]) -> Any:
+def json_loads(text: Union[str, bytes]) -> JSONType:
     return json.loads(text)
 
 
@@ -1047,9 +975,9 @@ def ply_header(
             "property float nx",
             "property float ny",
             "property float nz",
-            "property uchar diffuse_red",
-            "property uchar diffuse_green",
-            "property uchar diffuse_blue",
+            "property uchar red",
+            "property uchar green",
+            "property uchar blue",
         ]
     else:
         header = [
@@ -1059,9 +987,9 @@ def ply_header(
             "property float x",
             "property float y",
             "property float z",
-            "property uchar diffuse_red",
-            "property uchar diffuse_green",
-            "property uchar diffuse_blue",
+            "property uchar red",
+            "property uchar green",
+            "property uchar blue",
         ]
 
     if point_num_views:
@@ -1097,7 +1025,8 @@ def reconstruction_to_ply(
             if point_num_views and tracks_manager:
                 obs_count = point.number_of_observations()
                 if obs_count == 0:
-                    obs_count = len(tracks_manager.get_track_observations(point.id))
+                    obs_count = len(
+                        tracks_manager.get_track_observations(point.id))
                 s += " {}".format(obs_count)
 
             vertices.append(s)
@@ -1107,11 +1036,16 @@ def reconstruction_to_ply(
             o = shot.pose.get_origin()
             R = shot.pose.get_rotation_matrix()
             for axis in range(3):
-                c = 255 * np.eye(3)[axis]
+                c = np.eye(3)[axis] * 255
                 for depth in np.linspace(0, 2, 10):
                     p = o + depth * R[axis]
                     s = "{} {} {} {} {} {}".format(
-                        p[0], p[1], p[2], int(c[0]), int(c[1]), int(c[2])
+                        p[0],
+                        p[1],
+                        p[2],
+                        int(c[0]),
+                        int(c[1]),
+                        int(c[2]),
                     )
                     if point_num_views:
                         s += " 0"
@@ -1120,69 +1054,260 @@ def reconstruction_to_ply(
 
 
 def point_cloud_from_ply(
-    fp: TextIO,
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """Load point cloud from a PLY file."""
-    all_lines = fp.read().splitlines()
-    start = all_lines.index("end_header") + 1
-    lines = all_lines[start:]
-    n = len(lines)
+    fp: BinaryIO,
+) -> Tuple[NDArray, NDArray, NDArray, NDArray]:
+    """Load point cloud from a PLY file (ASCII or binary_little_endian)."""
+    # Read header (always ASCII lines terminated by \n).
+    header_lines: List[str] = []
+    while True:
+        raw = fp.readline()
+        line = raw.decode("ascii").rstrip("\r\n")
+        header_lines.append(line)
+        if line == "end_header":
+            break
 
-    points = np.zeros((n, 3), dtype=np.float32)
-    normals = np.zeros((n, 3), dtype=np.float32)
-    colors = np.zeros((n, 3), dtype=np.uint8)
-    labels = np.zeros((n,), dtype=np.uint8)
+    # Determine format from header.
+    fmt = "ascii"
+    n = 0
+    for h in header_lines:
+        if h.startswith("format "):
+            fmt = h.split()[1]  # "ascii" or "binary_little_endian"
+        elif h.startswith("element vertex "):
+            n = int(h.split()[-1])
 
-    for i, row in enumerate(lines):
-        words = row.split()
-        label = int(words[9])
-        points[i] = list(map(float, words[0:3]))
-        normals[i] = list(map(float, words[3:6]))
-        colors[i] = list(map(int, words[6:9]))
-        labels[i] = label
+    if n == 0:
+        return (
+            np.zeros((0, 3), dtype=np.float32),
+            np.zeros((0, 3), dtype=np.float32),
+            np.zeros((0, 3), dtype=np.uint8),
+            np.zeros((0,), dtype=np.uint8),
+        )
+
+    if fmt == "binary_little_endian":
+        row_dt = np.dtype([("f", "<f4", 6), ("c", "u1", 4)])
+        buf = fp.read(n * row_dt.itemsize)
+        rows = np.frombuffer(buf, dtype=row_dt, count=n)
+        points = rows["f"][:, :3].astype(np.float32)
+        normals = rows["f"][:, 3:].astype(np.float32)
+        colors = rows["c"][:, :3].astype(np.uint8)
+        labels = rows["c"][:, 3].astype(np.uint8)
+    else:
+        # ASCII fallback.
+        text = fp.read().decode("ascii")
+        lines = text.splitlines()
+        points = np.zeros((n, 3), dtype=np.float32)
+        normals = np.zeros((n, 3), dtype=np.float32)
+        colors = np.zeros((n, 3), dtype=np.uint8)
+        labels = np.zeros((n,), dtype=np.uint8)
+        for i, row in enumerate(lines[:n]):
+            words = row.split()
+            points[i] = list(map(float, words[0:3]))
+            normals[i] = list(map(float, words[3:6]))
+            colors[i] = list(map(int, words[6:9]))
+            labels[i] = int(words[9])
 
     return points, normals, colors, labels
 
 
-def point_cloud_to_ply(
-    points: np.ndarray,
-    normals: np.ndarray,
-    colors: np.ndarray,
-    labels: np.ndarray,
-    fp: TextIO,
-) -> None:
-    fp.write("ply\n")
-    fp.write("format ascii 1.0\n")
-    fp.write("element vertex {}\n".format(len(points)))
-    fp.write("property float x\n")
-    fp.write("property float y\n")
-    fp.write("property float z\n")
-    fp.write("property float nx\n")
-    fp.write("property float ny\n")
-    fp.write("property float nz\n")
-    fp.write("property uchar diffuse_red\n")
-    fp.write("property uchar diffuse_green\n")
-    fp.write("property uchar diffuse_blue\n")
-    fp.write("property uchar class\n")
-    fp.write("end_header\n")
+def read_ply_vertex_count(fp: BinaryIO) -> int:
+    """Read only the header of a PLY stream and return its vertex count.
 
-    template = "{:.4f} {:.4f} {:.4f} {:.3f} {:.3f} {:.3f} {} {} {} {}\n"
-    for i in range(len(points)):
-        p, n, c, l = points[i], normals[i], colors[i], labels[i]
-        fp.write(
-            template.format(
-                p[0],
-                p[1],
-                p[2],
-                n[0],
-                n[1],
-                n[2],
-                int(c[0]),
-                int(c[1]),
-                int(c[2]),
-                int(l),
-            )
+    Leaves the stream positioned at the start of the binary body, so this
+    is cheap (reads a few header lines, not the point data).
+    """
+    n = 0
+    while True:
+        raw = fp.readline()
+        if not raw:
+            break
+        line = raw.decode("ascii").rstrip("\r\n")
+        if line.startswith("element vertex "):
+            n = int(line.split()[-1])
+        if line == "end_header":
+            break
+    return n
+
+
+def _ply_header(count_vertices: int) -> str:
+    """Binary little-endian PLY header for the dense point-cloud layout."""
+    return (
+        "ply\n"
+        "format binary_little_endian 1.0\n"
+        f"element vertex {count_vertices}\n"
+        "property float x\n"
+        "property float y\n"
+        "property float z\n"
+        "property float nx\n"
+        "property float ny\n"
+        "property float nz\n"
+        "property uchar red\n"
+        "property uchar green\n"
+        "property uchar blue\n"
+        "property uchar class\n"
+        "end_header\n"
+    )
+
+
+def pack_point_cloud_rows(
+    points: NDArray,
+    normals: NDArray,
+    colors: NDArray,
+    labels: NDArray,
+) -> bytes:
+    """Pack a point cloud into the 28-byte/row binary PLY body layout.
+
+    Each row is 6 floats (xyz + nxnynz) + 4 uint8 (rgb + class).  Returns
+    the raw body bytes (no header).
+    """
+    n = len(points)
+    if n == 0:
+        return b""
+    pts = np.asarray(points, dtype="<f4")
+    nrm = np.asarray(normals, dtype="<f4")
+    col = np.asarray(colors, dtype=np.uint8)
+    lbl = np.asarray(labels, dtype=np.uint8).reshape(n, 1)
+    row_buf = np.empty(n, dtype=np.dtype([("f", "<f4", 6), ("c", "u1", 4)]))
+    row_buf["f"][:, :3] = pts
+    row_buf["f"][:, 3:] = nrm
+    row_buf["c"][:, :3] = col
+    row_buf["c"][:, 3:] = lbl
+    return row_buf.tobytes()
+
+
+def point_cloud_to_ply(
+    points: NDArray,
+    normals: NDArray,
+    colors: NDArray,
+    labels: NDArray,
+    fp: BinaryIO,
+) -> None:
+    fp.write(_ply_header(len(points)).encode("ascii"))
+    if len(points) == 0:
+        return
+    fp.write(pack_point_cloud_rows(points, normals, colors, labels))
+
+
+# ── Triangle mesh PLY (vertices xyz+normal+rgb, faces = uchar/int list) ──
+# Binary vertex record: 6 float32 (xyz + nxnynz) + 3 uint8 (rgb) = 27 bytes.
+_MESH_VERTEX_DT: np.dtype = np.dtype([("f", "<f4", 6), ("c", "u1", 3)])
+# Binary face record: 1 uint8 (count = 3) + 3 int32 (vertex indices) = 13 bytes.
+_MESH_FACE_DT: np.dtype = np.dtype([("n", "u1"), ("idx", "<i4", 3)])
+
+
+def mesh_ply_header(n_vertices: int, n_faces: int) -> str:
+    """Binary little-endian PLY header for the dense triangle mesh layout."""
+    return (
+        "ply\n"
+        "format binary_little_endian 1.0\n"
+        f"element vertex {n_vertices}\n"
+        "property float x\n"
+        "property float y\n"
+        "property float z\n"
+        "property float nx\n"
+        "property float ny\n"
+        "property float nz\n"
+        "property uchar red\n"
+        "property uchar green\n"
+        "property uchar blue\n"
+        f"element face {n_faces}\n"
+        "property list uchar int vertex_indices\n"
+        "end_header\n"
+    )
+
+
+def pack_mesh_vertex_rows(
+    vertices: NDArray, normals: NDArray, colors: NDArray
+) -> bytes:
+    """Pack mesh vertices into the 27-byte/row binary PLY body (no header)."""
+    n = len(vertices)
+    if n == 0:
+        return b""
+    rows = np.empty(n, dtype=_MESH_VERTEX_DT)
+    rows["f"][:, :3] = np.asarray(vertices, dtype="<f4")
+    rows["f"][:, 3:] = np.asarray(normals, dtype="<f4")
+    rows["c"][:, :3] = np.asarray(colors, dtype=np.uint8)
+    return rows.tobytes()
+
+
+def pack_mesh_face_rows(faces: NDArray, index_offset: int = 0) -> bytes:
+    """Pack triangle faces into the 13-byte/row binary PLY body (no header).
+
+    ``index_offset`` is added to every vertex index — used when concatenating
+    several per-cluster meshes whose vertices are stacked into one buffer.
+    """
+    m = len(faces)
+    if m == 0:
+        return b""
+    rows = np.empty(m, dtype=_MESH_FACE_DT)
+    rows["n"] = 3
+    rows["idx"] = np.asarray(faces, dtype="<i4") + np.int32(index_offset)
+    return rows.tobytes()
+
+
+def read_mesh_ply_counts(fp: BinaryIO) -> Tuple[int, int]:
+    """Read only the header of a mesh PLY and return (n_vertices, n_faces).
+
+    Leaves the stream positioned at the start of the binary body.
+    """
+    n_v = 0
+    n_f = 0
+    while True:
+        raw = fp.readline()
+        if not raw:
+            break
+        line = raw.decode("ascii").rstrip("\r\n")
+        if line.startswith("element vertex "):
+            n_v = int(line.split()[-1])
+        elif line.startswith("element face "):
+            n_f = int(line.split()[-1])
+        if line == "end_header":
+            break
+    return n_v, n_f
+
+
+def load_mesh_from_ply(
+    fp: BinaryIO,
+) -> Tuple[NDArray, NDArray, NDArray, NDArray]:
+    """Load a binary mesh PLY written by ``mesh_to_ply``.
+
+    Returns ``(vertices, normals, colors, faces)`` where faces is an M×3 int32
+    array of vertex indices.  Assumes the exact layout of ``mesh_ply_header``.
+    """
+    n_v, n_f = read_mesh_ply_counts(fp)
+    if n_v == 0:
+        return (
+            np.zeros((0, 3), dtype=np.float32),
+            np.zeros((0, 3), dtype=np.float32),
+            np.zeros((0, 3), dtype=np.uint8),
+            np.zeros((0, 3), dtype=np.int32),
         )
+    vbuf = fp.read(n_v * _MESH_VERTEX_DT.itemsize)
+    vrows = np.frombuffer(vbuf, dtype=_MESH_VERTEX_DT, count=n_v)
+    vertices = vrows["f"][:, :3].astype(np.float32)
+    normals = vrows["f"][:, 3:].astype(np.float32)
+    colors = vrows["c"][:, :3].astype(np.uint8)
+    if n_f == 0:
+        faces = np.zeros((0, 3), dtype=np.int32)
+    else:
+        fbuf = fp.read(n_f * _MESH_FACE_DT.itemsize)
+        frows = np.frombuffer(fbuf, dtype=_MESH_FACE_DT, count=n_f)
+        faces = frows["idx"].astype(np.int32)
+    return vertices, normals, colors, faces
+
+
+def mesh_to_ply(
+    vertices: NDArray,
+    normals: NDArray,
+    colors: NDArray,
+    faces: NDArray,
+    fp: BinaryIO,
+) -> None:
+    """Write a binary triangle mesh PLY (xyz+normal+rgb vertices, tri faces)."""
+    fp.write(mesh_ply_header(len(vertices), len(faces)).encode("ascii"))
+    if len(vertices) == 0:
+        return
+    fp.write(pack_mesh_vertex_rows(vertices, normals, colors))
+    fp.write(pack_mesh_face_rows(faces))
 
 
 # Filesystem interaction methods
@@ -1191,12 +1316,12 @@ def mkdir_p(path: str) -> None:
     os.makedirs(path, exist_ok=True)
 
 
-def open_wt(path: str) -> IO[Any]:
+def open_wt(path: str) -> TextIO:
     """Open a file in text mode for writing utf-8."""
     return open(path, "w", encoding="utf-8")
 
 
-def open_rt(path: str) -> IO[Any]:
+def open_rt(path: str) -> TextIO:
     """Open a file in text mode for reading utf-8."""
     return open(path, "r", encoding="utf-8")
 
@@ -1215,8 +1340,11 @@ def imread(
 
 
 def imread_from_fileobject(
-    fb, grayscale: bool = False, unchanged: bool = False, anydepth: bool = False
-) -> np.ndarray:
+    fb: IO[bytes],
+    grayscale: bool = False,
+    unchanged: bool = False,
+    anydepth: bool = False,
+) -> NDArray:
     """Load image as an array ignoring EXIF orientation."""
     if context.OPENCV3:
         if grayscale:
@@ -1255,16 +1383,13 @@ def imread_from_fileobject(
         raise IOError("Unable to load image")
 
     if len(image.shape) == 3:
-        image[:, :, :3] = image[:, :, [2, 1, 0]]  # Turn BGR to RGB (or BGRA to RGBA)
+        # Turn BGR to RGB (or BGRA to RGBA)
+        image[:, :, :3] = image[:, :, [2, 1, 0]]
     elif len(image.shape) == 2:
         image = image[..., np.newaxis] # Make sure we always have a band dimension
 
     return image
 
-    @classmethod
-    def imwrite(cls, path: str, image: np.ndarray) -> None:
-        with cls.open(path, "wb") as fwb:
-            imwrite(fwb, image, path)
 
 def imread_rasterio(path, grayscale=False, unchanged=False, anydepth=False):
     """Load image as an array ignoring EXIF orientation."""
@@ -1323,10 +1448,13 @@ def imwrite(path, image: np.ndarray) -> None:
             return imwrite_from_fileobject(fwb, image, ext)
 
 
-def imwrite_from_fileobject(fwb, image: np.ndarray, ext: str) -> None:
+def imwrite_from_fileobject(
+    fwb: Union[IO[str], IO[bytes]], image: NDArray, ext: str
+) -> None:
     """Write an image to a file object"""
     if len(image.shape) == 3:
-        image[:, :, :3] = image[:, :, [2, 1, 0]]  # Turn RGB to BGR (or RGBA to BGRA)
+        # Turn RGB to BGR (or RGBA to BGRA)
+        image[:, :, :3] = image[:, :, [2, 1, 0]]
     _, im_buffer = cv2.imencode(ext, image)
     fwb.write(im_buffer)
 
@@ -1355,7 +1483,7 @@ def imwrite_rasterio(path, image: np.ndarray):
 
 
 def image_size_from_fileobject(
-    fb: Union[IO[bytes], bytes, Path, str, TextIO]
+    fb: Union[IO[bytes], bytes, Path, str, TextIO],
 ) -> Tuple[int, int]:
     """Height and width of an image."""
     if isinstance(fb, TextIO):
@@ -1377,70 +1505,73 @@ def image_size(path: str) -> Tuple[int, int]:
 class IoFilesystemBase(ABC):
     @classmethod
     @abstractmethod
-    def exists(cls, path: str):
-        pass
-
-    @classmethod
-    def ls(cls, path: str):
-        pass
+    def exists(cls, path: str) -> bool: ...
 
     @classmethod
     @abstractmethod
-    def isfile(cls, path: str):
-        pass
+    def ls(cls, path: str) -> List[str]: ...
 
     @classmethod
     @abstractmethod
-    def isdir(cls, path: str):
-        pass
-
-    @classmethod
-    def rm_if_exist(cls, filename: str):
-        pass
-
-    @classmethod
-    def symlink(cls, src_path: str, dst_path: str, **kwargs):
-        pass
+    def isfile(cls, path: str) -> bool: ...
 
     @classmethod
     @abstractmethod
-    def open(cls, *args, **kwargs) -> IO[Any]:
-        pass
+    def isdir(cls, path: str) -> bool: ...
 
     @classmethod
     @abstractmethod
-    def open_wt(cls, path: str):
-        pass
+    def rm_if_exist(cls, filename: str) -> None: ...
 
     @classmethod
     @abstractmethod
-    def open_rt(cls, path: str):
-        pass
+    def symlink(cls, src_path: str, dst_path: str, **kwargs: Any) -> None: ...
 
     @classmethod
     @abstractmethod
-    def mkdir_p(cls, path: str):
-        pass
+    def open_wb(cls, path: str) -> BinaryIO: ...
 
     @classmethod
     @abstractmethod
-    def imwrite(cls, path: str, image):
-        pass
+    def open_rb(cls, path: str) -> BinaryIO: ...
 
     @classmethod
     @abstractmethod
-    def imread(cls, path: str, grayscale=False, unchanged=False, anydepth=False):
-        pass
+    def open_wt(cls, path: str) -> TextIO: ...
 
     @classmethod
     @abstractmethod
-    def image_size(cls, path: str):
-        pass
+    def open_rt(cls, path: str) -> TextIO: ...
 
     @classmethod
     @abstractmethod
-    def timestamp(cls, path: str):
-        pass
+    def open_at(cls, path: str) -> TextIO: ...
+
+    @classmethod
+    @abstractmethod
+    def mkdir_p(cls, path: str) -> None: ...
+
+    @classmethod
+    @abstractmethod
+    def imwrite(cls, path: str, image: NDArray) -> None: ...
+
+    @classmethod
+    @abstractmethod
+    def imread(
+        cls,
+        path: str,
+        grayscale: bool = False,
+        unchanged: bool = False,
+        anydepth: bool = False,
+    ) -> NDArray: ...
+
+    @classmethod
+    @abstractmethod
+    def image_size(cls, path: str) -> Tuple[int, int]: ...
+
+    @classmethod
+    @abstractmethod
+    def timestamp(cls, path: str) -> float: ...
 
 
 class IoFilesystemDefault(IoFilesystemBase):
@@ -1448,8 +1579,7 @@ class IoFilesystemDefault(IoFilesystemBase):
         self.type = "default"
 
     @classmethod
-    def exists(cls, path: str) -> str:
-        # pyre-fixme[7]: Expected `str` but got `bool`.
+    def exists(cls, path: str) -> bool:
         return os.path.exists(path)
 
     @classmethod
@@ -1457,13 +1587,11 @@ class IoFilesystemDefault(IoFilesystemBase):
         return os.listdir(path)
 
     @classmethod
-    def isfile(cls, path: str) -> str:
-        # pyre-fixme[7]: Expected `str` but got `bool`.
+    def isfile(cls, path: str) -> bool:
         return os.path.isfile(path)
 
     @classmethod
-    def isdir(cls, path: str) -> str:
-        # pyre-fixme[7]: Expected `str` but got `bool`.
+    def isdir(cls, path: str) -> bool:
         return os.path.isdir(path)
 
     @classmethod
@@ -1483,20 +1611,28 @@ class IoFilesystemDefault(IoFilesystemBase):
         os.symlink(src_path, dst_path, **kwargs)
 
     @classmethod
-    def open(cls, *args, **kwargs) -> IO[Any]:
-        return open(*args, **kwargs)
+    def open_wb(cls, path: str) -> BinaryIO:
+        return open(path, "wb")
 
     @classmethod
-    def open_wt(cls, path: str):
-        return cls.open(path, "w", encoding="utf-8")
+    def open_rb(cls, path: str) -> BinaryIO:
+        return open(path, "rb")
 
     @classmethod
-    def open_rt(cls, path: str):
-        return cls.open(path, "r", encoding="utf-8")
+    def open_wt(cls, path: str) -> TextIO:
+        return open(path, "wt")
 
     @classmethod
-    def mkdir_p(cls, path: str):
-        return os.makedirs(path, exist_ok=True)
+    def open_rt(cls, path: str) -> TextIO:
+        return open(path, "rt")
+
+    @classmethod
+    def open_at(cls, path: str) -> TextIO:
+        return open(path, "at")
+
+    @classmethod
+    def mkdir_p(cls, path: str) -> None:
+        os.makedirs(path, exist_ok=True)
 
     @classmethod
     def imread(cls,
@@ -1510,7 +1646,7 @@ class IoFilesystemDefault(IoFilesystemBase):
         elif ext.lower() in [".dng", ".raw", ".nef"]:
             return imread_rawpy(path, grayscale, unchanged, anydepth)
         else:
-            with cls.open(path, "rb") as fb:
+            with cls.open_rb(path) as fb:
                 return imread_from_fileobject(fb, grayscale, unchanged, anydepth)
 
     @classmethod
@@ -1519,19 +1655,18 @@ class IoFilesystemDefault(IoFilesystemBase):
         if ext.lower() == ".tiff" or ext.lower() == ".tif":
             imwrite_rasterio(path, image)
         else:
-            with cls.open(path, "wb") as fwb:
+            with cls.open_wb(path) as fwb:
                 imwrite_from_fileobject(fwb, image, ext)
 
     @classmethod
     def image_size(cls, path: str) -> Tuple[int, int]:
         try:
-            with cls.open(path, "rb") as fb:
+            with cls.open_rb(path) as fb:
                 return image_size_from_fileobject(fb)
         except:
             # Fallback to rasterio (RGB 32bit floats fail with PIL)
             with rasterio.open(path, "r") as r:
                 return r.height, r.width
     @classmethod
-    def timestamp(cls, path: str) -> str:
-        # pyre-fixme[7]: Expected `str` but got `float`.
+    def timestamp(cls, path: str) -> float:
         return os.path.getmtime(path)

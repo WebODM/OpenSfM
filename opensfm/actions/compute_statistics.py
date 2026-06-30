@@ -1,28 +1,31 @@
+# pyre-strict
 import logging
 import os
+from timeit import default_timer as timer
 
-from opensfm import io
-from opensfm import stats
+from opensfm import io, stats
 from opensfm.dataset import DataSet
 
 logger: logging.Logger = logging.getLogger(__name__)
 logging.getLogger('matplotlib.font_manager').disabled = True
 
 
-def run_dataset(data: DataSet, diagram_max_points: int=-1) -> None:
+def run_dataset(data: DataSet, diagram_max_points: int = -1) -> None:
     """Compute various staistics of a datasets and write them to 'stats' folder
 
     Args:
         data: dataset object
 
     """
+    start = timer()
     reconstructions = data.load_reconstruction()
     tracks_manager = data.load_tracks_manager()
 
     output_path = os.path.join(data.data_path, "stats")
     data.io_handler.mkdir_p(output_path)
 
-    stats_dict = stats.compute_all_statistics(data, tracks_manager, reconstructions)
+    stats_dict = stats.compute_all_statistics(
+        data, tracks_manager, reconstructions)
 
     stats.save_residual_grids(
         data, tracks_manager, reconstructions, output_path, data.io_handler
@@ -41,6 +44,20 @@ def run_dataset(data: DataSet, diagram_max_points: int=-1) -> None:
     stats.save_topview(
         data, tracks_manager, reconstructions, output_path, data.io_handler
     )
+    stats.save_overlap_map(
+        reconstructions, output_path, data.io_handler
+    )
+
+    stats.save_dsm_thumbnail(data, output_path, data.io_handler)
+    stats.save_ortho_thumbnail(data, output_path, data.io_handler)
+
+    elapsed = timer() - start
+    steps_times = stats_dict["processing_statistics"]["steps_times"]
+    total = steps_times.pop("Total Time", 0.0)
+    steps_times["Statistics"] = elapsed
+    steps_times["Total Time"] = total + elapsed
 
     with data.io_handler.open_wt(os.path.join(output_path, "stats.json")) as fout:
         io.json_dump(stats_dict, fout)
+
+    data.save_report(io.json_dumps({"wall_time": elapsed}), "statistics.json")
