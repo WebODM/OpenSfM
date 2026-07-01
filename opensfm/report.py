@@ -494,7 +494,7 @@ class Report:
             residual_grids = [
                 f
                 for f in self.io_handler.ls(self.output_path)
-                if f.startswith("residuals_" + str(camera.replace("/", "_")))
+                if f.startswith("residuals_" + str(camera.replace("/", "_"))) and f.endswith(".png")
             ]
             if not residual_grids:
                 continue
