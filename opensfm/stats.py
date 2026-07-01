@@ -803,11 +803,11 @@ def reconstruction_statistics(
     )
 
     # Ground Sampling Distance (average across all reconstruction components).
-    gsd_values = [
-        _compute_gsd(rec, tracks_manager) for rec in reconstructions
-    ]
-    valid_gsds = [g for g in gsd_values if g > 0]
-    stats["gsd"] = float(np.mean(valid_gsds)) if valid_gsds else -1.0
+    # gsd_values = [
+    #     _compute_gsd(rec, tracks_manager) for rec in reconstructions
+    # ]
+    # valid_gsds = [g for g in gsd_values if g > 0]
+    # stats["gsd"] = float(np.mean(valid_gsds)) if valid_gsds else -1.0
 
     return stats
 
@@ -1485,13 +1485,13 @@ def save_heatmap(
             fontsize="x-small",
         )
 
-        with io_handler.open_wb(
-            os.path.join(
-                output_path, "heatmap_" +
-                str(camera_id.replace("/", "_")) + ".npy"
-            )
-        ) as fwb:
-            np.save(fwb, camera_heatmap)
+        # with io_handler.open_wb(
+        #     os.path.join(
+        #         output_path, "heatmap_" +
+        #         str(camera_id.replace("/", "_")) + ".npy"
+        #     )
+        # ) as fwb:
+        #     np.save(fwb, camera_heatmap)
     with io_handler.open_wb(
         os.path.join(
             output_path, "heatmap_" + str(camera_id.replace("/", "_")) + ".png"
@@ -1632,13 +1632,13 @@ def save_residual_grids(
             [0, buckets_y / 2, buckets_y], [0, int(h / 2), h], fontsize="x-small"
         )
 
-        with io_handler.open_wb(
-            os.path.join(
-                output_path, "residuals_" +
-                str(camera_id.replace("/", "_")) + ".npy"
-            )
-        ) as fwb:
-            np.save(fwb, camera_array_res)
+        # with io_handler.open_wb(
+        #     os.path.join(
+        #         output_path, "residuals_" +
+        #         str(camera_id.replace("/", "_")) + ".npy"
+        #     )
+        # ) as fwb:
+        #     np.save(fwb, camera_array_res)
 
         with io_handler.open_wb(
             os.path.join(

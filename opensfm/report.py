@@ -51,8 +51,8 @@ class Report:
         if isinstance(bytestring, str):
             bytestring = bytestring.encode("utf8")
 
-        with self.io_handler.open(
-            os.path.join(self.output_path, filename), "wb"
+        with self.io_handler.open_wb(
+            os.path.join(self.output_path, filename)
         ) as fwb:
             fwb.write(bytestring)
 
@@ -131,8 +131,8 @@ class Report:
 
         with tempfile.TemporaryDirectory() as tmp_local_dir:
             local_image_path = os.path.join(tmp_local_dir, os.path.basename(image_path))
-            with self.io_handler.open(local_image_path, "wb") as fwb:
-                with self.io_handler.open(image_path, "rb") as f:
+            with self.io_handler.open_wb(local_image_path) as fwb:
+                with self.io_handler.open_rb(image_path) as f:
                     fwb.write(f.read())
 
             width, height = PIL.Image.open(local_image_path).size
@@ -430,7 +430,7 @@ class Report:
 
         heatmap_height = 60
         heatmaps = [
-            f for f in self.io_handler.ls(self.output_path) if f.startswith("heatmap")
+            f for f in self.io_handler.ls(self.output_path) if f.startswith("heatmap") and f.endswith(".png")
         ]
         self._make_centered_image(
             os.path.join(self.output_path, heatmaps[0]), heatmap_height
@@ -569,7 +569,7 @@ class Report:
         matchgraph = [
             f
             for f in self.io_handler.ls(self.output_path)
-            if f.startswith("matchgraph")
+            if f.startswith("matchgraph") and f.endswith(".png")
         ]
         self._make_centered_image(
             os.path.join(self.output_path, matchgraph[0]), matchgraph_height
