@@ -683,8 +683,9 @@ void BundleAdjuster::Run() {
     // Keep aspect ratio constant (BROWN only)
     if (!cam.GetParametersToOptimize().empty()){
       if (camera.GetProjectionType() == geometry::ProjectionType::BROWN){
-          ceres::SubsetManifold *subset_manifold = new ceres::SubsetManifold(data.size(), { 6 });
-          problem.SetManifold(data.data(), subset_manifold);
+        auto* problem = solver.GetProblem();  
+        ceres::SubsetManifold *subset_manifold = new ceres::SubsetManifold(data.size(), { 6 });
+          problem->SetManifold(data.data(), subset_manifold);
       }
     }
 
