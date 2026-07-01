@@ -32,25 +32,6 @@ logger: logging.Logger = logging.getLogger(__name__)
 
 RESIDUAL_PIXEL_CUTOFF = 4
 
-# #05CB63 — Mapillary green
-_CLR_ACCENT = (0.02, 0.80, 0.39)
-_CLR_BAD = np.array(report.COLOR_GRADE_BAD) / \
-    255.0         # #E05252 — muted red
-_CLR_AVG = np.array(report.COLOR_GRADE_AVG) / \
-    255.0         # #D4A843 — warm amber
-_CLR_GOOD = np.array(report.COLOR_GRADE_GOOD) / \
-    255.0       # #3CB371 — medium sea-green
-
-_REPORT_SEQ_CMAP = colors.LinearSegmentedColormap.from_list(
-    "opensfm_seq",
-    [_CLR_BAD, _CLR_AVG, _CLR_GOOD],
-)
-
-_REPORT_SEQ_CMAP_INV = colors.LinearSegmentedColormap.from_list(
-    "opensfm_quality",
-    [_CLR_GOOD, _CLR_AVG, _CLR_BAD],
-)
-
 
 def _norm2d(point: NDArray) -> float:
     return math.sqrt(point[0] * point[0] + point[1] * point[1])
@@ -1060,7 +1041,7 @@ def compute_all_statistics(
     stats["gcp_errors"] = gcp_errors(data, reconstructions)
     stats["3d_errors"] = td_errors(data, tracks_manager, reconstructions)
     stats["opk_errors"] = opk_errors(reconstructions)
-    stats["overlap"] = overlap_statistics(reconstructions, tracks_manager)
+    # stats["overlap"] = overlap_statistics(reconstructions, tracks_manager)
 
     # CRS the georeferenced products are written in (GCP CRS if projected, else
     # UTM from the reference) — the single decision shared with LAS/LAZ + DSM/ortho.
@@ -1136,7 +1117,7 @@ def save_matchgraph(
         io.json_dump(matchgraph_data, fjson)
 
     plt.clf()
-    cmap = _REPORT_SEQ_CMAP
+    cmap = cm.get_cmap("viridis")
     for (node1, node2), edge in sorted(connectivity.items(), key=lambda x: x[1]):
         if edge < min_matches:
             continue
@@ -1193,7 +1174,7 @@ def save_residual_histogram(
     ]
     n, _, p_norm = axs[0].hist(b_norm[:-1], b_norm, weights=h_norm)
     n = n.astype("int")
-    seq_cmap = _REPORT_SEQ_CMAP
+    seq_cmap = plt.cm.viridis
     for i in range(len(p_norm)):
         p_norm[i].set_facecolor(seq_cmap(n[i] / max(n)))
 
@@ -1346,8 +1327,8 @@ def save_topview(
         sorted_shots = sorted(
             rec.shots.values(), key=lambda x: x.metadata.capture_time.value
         )
-        c_camera = _CLR_ACCENT
-        c_gps = _CLR_BAD
+        c_camera = cm.get_cmap("cool")(0 / len(reconstructions))
+        c_gps = cm.get_cmap("autumn")(0 / len(reconstructions))
         for j, shot in enumerate(sorted_shots):
             o = shot.pose.get_origin()
             x, y = (
@@ -1482,10 +1463,7 @@ def save_heatmap(
         lowest = np.min(camera_heatmap)
 
         plt.clf()
-        plt.imshow(
-            (camera_heatmap - lowest) / (highest - lowest),
-            cmap=_REPORT_SEQ_CMAP,
-        )
+        plt.imshow((camera_heatmap - lowest) / (highest - lowest) * 255)
 
         plt.title(
             f"Detected features heatmap for camera {camera_id}",
@@ -1617,7 +1595,7 @@ def save_residual_grids(
             scale_units="xy",
             scale=1,
             width=0.1,
-            cmap=_REPORT_SEQ_CMAP_INV,
+            cmap="viridis_r",
         )
 
         scale = highest - lowest
@@ -1635,7 +1613,7 @@ def save_residual_grids(
         )
 
         norm = colors.Normalize(vmin=lowest, vmax=highest)
-        cmap = _REPORT_SEQ_CMAP_INV
+        cmap = cm.get_cmap("viridis_r")
         sm = cm.ScalarMappable(norm=norm, cmap=cmap)
         sm.set_array([])
         plt.colorbar(
@@ -1959,105 +1937,6 @@ def overlap_statistics(
         stats["side_overlap_mean"] = 0.0
         stats["side_overlap_median"] = 0.0
     return stats
-
-
-def save_overlap_map(
-    reconstructions: List[types.Reconstruction],
-    output_path: str,
-    io_handler: io.IoFilesystemBase,
-) -> None:
-    """Rasterize camera footprints and save a color-coded overlap map PNG."""
-
-    ground_z = _compute_ground_plane_z(reconstructions)
-
-    # Collect all valid footprints
-    footprints = []
-    for rec in reconstructions:
-        for shot in rec.shots.values():
-            fp = _compute_shot_footprint(shot, ground_z)
-            if fp is not None:
-                footprints.append(fp)
-
-    if not footprints:
-        return
-
-    # Compute world extent
-    all_pts = np.vstack(footprints)
-    min_x, min_y = all_pts[:, 0].min(), all_pts[:, 1].min()
-    max_x, max_y = all_pts[:, 0].max(), all_pts[:, 1].max()
-    extent_x = max_x - min_x
-    extent_y = max_y - min_y
-    if extent_x < 1e-6 or extent_y < 1e-6:
-        return
-
-    # Add margin
-    margin = 0.05
-    min_x -= extent_x * margin
-    min_y -= extent_y * margin
-    max_x += extent_x * margin
-    max_y += extent_y * margin
-    extent_x = max_x - min_x
-    extent_y = max_y - min_y
-
-    # Grid resolution: target ~1000px on longest side
-    target_px = 1000
-    if extent_x > extent_y:
-        nx = target_px
-        ny = max(1, int(target_px * extent_y / extent_x))
-    else:
-        ny = target_px
-        nx = max(1, int(target_px * extent_x / extent_y))
-
-    # Build grid of sample points
-    xs = np.linspace(min_x, max_x, nx)
-    ys = np.linspace(min_y, max_y, ny)
-    xv, yv = np.meshgrid(xs, ys)
-    grid_points = np.column_stack([xv.ravel(), yv.ravel()])  # (ny*nx, 2)
-
-    # Count how many footprints cover each cell
-    counts = np.zeros(ny * nx, dtype=np.int32)
-    for fp in footprints:
-        path = MplPath(fp)
-        inside = path.contains_points(grid_points)
-        counts += inside.astype(np.int32)
-
-    counts_2d = counts.reshape(ny, nx)
-
-    # Color map using the unified palette
-    rgba = np.ones((ny, nx, 4), dtype=np.float32)  # white = no coverage
-    # 1 view: light grey (insufficient)
-    rgba[counts_2d == 1] = [0.78, 0.78, 0.78, 1.0]
-    # 2 views: bad (muted red)
-    rgba[counts_2d == 2] = [*_CLR_BAD, 1.0]
-    # 3 views: average (warm amber)
-    rgba[counts_2d == 3] = [*_CLR_AVG, 1.0]
-    # 4 views: good (medium sea-green)
-    rgba[counts_2d == 4] = [*_CLR_GOOD, 1.0]
-    # 5+ views: accent (Mapillary green)
-    rgba[counts_2d >= 5] = [*_CLR_ACCENT, 1.0]
-
-    # Create figure with legend
-    fig, ax = plt.subplots(1, 1, figsize=(10, 10 * ny / nx))
-    ax.imshow(rgba, origin="lower", extent=[
-              min_x, max_x, min_y, max_y], aspect="equal")
-    ax.set_xlabel("X (meters)")
-    ax.set_ylabel("Y (meters)")
-    ax.set_title("Overlap Map")
-
-    # Legend
-
-    legend_elements = [
-        Patch(facecolor=(0.78, 0.78, 0.78), label="1 view"),
-        Patch(facecolor=_CLR_BAD, label="2 views"),
-        Patch(facecolor=_CLR_AVG, label="3 views"),
-        Patch(facecolor=_CLR_GOOD, label="4 views"),
-        Patch(facecolor=_CLR_ACCENT, label="5+ views"),
-    ]
-    ax.legend(handles=legend_elements, loc="upper right", framealpha=0.9)
-
-    with io_handler.open_wb(os.path.join(output_path, "overlap_map.png")) as fwb:
-        plt.savefig(fwb, dpi=200, bbox_inches="tight")
-    plt.close(fig)
 
 
 # Hard-coded longest side, in pixels, for the DSM/ortho report thumbnails.

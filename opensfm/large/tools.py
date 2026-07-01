@@ -209,7 +209,7 @@ def add_camera_constraints_hard(
                 )
 
 
-@lru_cache(use_memory_up_to=vmem.virtual_memory().available * 0.9)
+@lru_cache(25)
 def load_reconstruction(
     path: str, index: int
 ) -> Tuple[str, Tuple[types.Reconstruction, pymap.TracksManager]]:

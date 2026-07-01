@@ -44,12 +44,12 @@ def run_dataset(data: DataSet, diagram_max_points: int = -1) -> None:
     stats.save_topview(
         data, tracks_manager, reconstructions, output_path, data.io_handler
     )
-    stats.save_overlap_map(
-        reconstructions, output_path, data.io_handler
-    )
+    # stats.save_overlap_map(
+    #     reconstructions, output_path, data.io_handler
+    # )
 
-    stats.save_dsm_thumbnail(data, output_path, data.io_handler)
-    stats.save_ortho_thumbnail(data, output_path, data.io_handler)
+    # stats.save_dsm_thumbnail(data, output_path, data.io_handler)
+    # stats.save_ortho_thumbnail(data, output_path, data.io_handler)
 
     elapsed = timer() - start
     steps_times = stats_dict["processing_statistics"]["steps_times"]
