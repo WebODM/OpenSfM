@@ -1314,9 +1314,6 @@ def save_topview(
                 splat * (color[i] / 255.0), current
             )
 
-    # reverse X axis of the image so that it corresponds to the common map orientation (North up, East right)
-    topview = np.flip(topview, axis=0)
-
     plt.clf()
     plt.imshow(topview)
 
@@ -1335,7 +1332,6 @@ def save_topview(
                 int((o[0] - low_x) / size_x * im_size_x),
                 int((o[1] - low_y) / size_y * im_size_y),
             )
-            y = im_size_y - y  # reverse Y axis to match common map orientation
             plt.plot(
                 x,
                 y,
@@ -1353,7 +1349,6 @@ def save_topview(
                     int((n[0] - low_x) / size_x * im_size_x),
                     int((n[1] - low_y) / size_y * im_size_y),
                 )
-                ny = im_size_y - ny  # reverse Y axis to match common map orientation
                 plt.plot(
                     [x, nx], [y, ny], linestyle="-", color=c_camera, linewidth=linewidth
                 )
@@ -1366,7 +1361,6 @@ def save_topview(
                 int((gps[0] - low_x) / size_x * im_size_x),
                 int((gps[1] - low_y) / size_y * im_size_y),
             )
-            gps_y = im_size_y - gps_y  # reverse Y axis to match common map orientation
             plt.plot(
                 gps_x,
                 gps_y,
