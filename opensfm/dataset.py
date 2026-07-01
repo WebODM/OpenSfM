@@ -671,7 +671,6 @@ class DataSet(DataSetBase):
 
         # None means identity / WGS84
         result = crs if crs is not None else "WGS84"
-        geo.log_vertical_datum(result)
         return result
 
     def output_coordinate_system(self) -> str:

@@ -20,109 +20,6 @@ DEFAULT_GPS_STD: NDArray = np.array([5.0, 5.0, 15.0])
 logger = logging.getLogger(__name__)
 
 
-def log_vertical_datum(crs: str) -> None:
-    if not crs or crs.upper() in ("WGS84", "EPSG:4326"):
-        logger.warning(
-            f"GCPs: using implicit ellipsoid height ({crs or 'WGS84'}). Geoid effects are ignored."
-        )
-        return
-    elif "4979" in crs:
-        logger.warning(
-            f"GCPs: using explicit ellipsoid height ({crs}). Geoid effects are ignored."
-        )
-        return
-
-    try:
-        parsed = pymap.parse_gcp_projection_string(crs)
-        if not parsed:
-            logger.warning(
-                "GCPs: using implicit ellipsoid height (WGS84). Geoid effects are ignored.")
-            return
-
-        pyproj_crs = pyproj.CRS(parsed)
-        if pyproj_crs.is_compound:
-            vert_crs = pyproj_crs.sub_crs_list[1]
-            logger.info(
-                f"GCPs: using vertical datum '{vert_crs.name}' from compound CRS."
-            )
-        elif hasattr(pyproj_crs, "has_z") and pyproj_crs.has_z:
-            logger.warning(
-                f"GCPs: using 3D CRS '{pyproj_crs.name}'. If this represents an ellipsoid height, geoid effects are ignored."
-            )
-    except Exception as e:
-        logger.debug(f"Could not parse GCP vertical datum for logging: {e}")
-
-
-def nicify_crs(crs_string: str) -> Tuple[str, str]:
-    """Produce a standardized string representation of horizontal and vertical CRS.
-
-    Returns:
-        Tuple[str, str]: A tuple specifying (Horizontal CRS, Vertical CRS).
-    """
-    if not crs_string or crs_string.upper() == "WGS84":
-        return "WGS84", "WGS 84 Ellipsoid"
-
-    upper_crs = crs_string.upper()
-    if upper_crs == "EPSG:4326":
-        return "WGS84", "WGS 84 Ellipsoid (implicit)"
-
-    if upper_crs == "EPSG:4979":
-        return "WGS84", "WGS 84 Ellipsoid (explicit)"
-
-    if upper_crs.startswith("WGS84 UTM"):
-        # e.g., "WGS84 UTM 17N"
-        parts = upper_crs.split()
-        return f"UTM {parts[-1]}", "WGS 84 Ellipsoid"
-
-    if "+" in upper_crs and upper_crs.startswith("EPSG:"):
-        # Compound EPSG: EPSG:4979+5773
-        parts = upper_crs.split("+")
-        horiz = parts[0]
-        vert = f"EPSG:{parts[1]}" if not parts[1].startswith(
-            "EPSG:") else parts[1]
-        return horiz, vert
-
-    try:
-        parsed = pymap.parse_gcp_projection_string(crs_string)
-        if not parsed:
-            return crs_string, "WGS 84 Ellipsoid"
-
-        pyproj_crs = pyproj.CRS(parsed)
-
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            crs_dict = pyproj_crs.to_dict()
-            ellps = crs_dict.get("ellps", "Ellipsoid")
-            vert = f"{ellps.upper()}" if ellps != "Ellipsoid" else "WGS 84 Ellipsoid"
-            if "towgs84" in crs_dict and np.array(crs_dict["towgs84"]).any():
-                vert += f" ({','.join(map(str, crs_dict['towgs84']))})"
-
-        if crs_string.strip().startswith("+proj="):
-            if crs_dict.get("proj") == "utm":
-                zone = crs_dict.get("zone", "")
-                hemisphere = "S" if "south" in crs_dict else "N"
-                horiz = f"UTM {zone}{hemisphere}"
-            else:
-                horiz = crs_string
-            return str(horiz), str(vert)
-
-        if pyproj_crs.coordinate_operation and pyproj_crs.coordinate_operation.name:
-            op_name = pyproj_crs.coordinate_operation.name
-            if op_name.startswith("UTM zone "):
-                horiz = "UTM " + op_name.replace("UTM zone ", "")
-                return str(horiz), str(vert)
-
-        horiz = pyproj_crs.name if pyproj_crs.name != "unknown" else crs_string
-
-        if pyproj_crs.is_compound:
-            horiz = pyproj_crs.sub_crs_list[0].name
-            vert = pyproj_crs.sub_crs_list[1].name
-
-        return str(horiz), str(vert)
-    except Exception:
-        return crs_string, "WGS 84 Ellipsoid"
-
-
 @overload
 def ecef_from_lla(lat: float, lon: float,
                   alt: float) -> Tuple[float, float, float]: ...
@@ -499,23 +396,15 @@ def construct_proj_transformer(proj_str: str, inverse: bool = False) -> pyproj.T
 
 
 def transform_to_proj(
-    point: Sequence[float], reference: TopocentricConverter, projection: pyproj.Transformer
+    point: Sequence[float], reference: TopocentricConverter, projection: pyproj.Proj
 ) -> List[float]:
-    """
-    Transform a point defined wrt. the local topocentric frame to a projection
-    defined by the given Transformer. We assume the Transformer goes from
-    WGS84 to the desired projection.
-    """
-    assert projection.source_crs.to_epsg(
-    ) == 4326, "Transformer source CRS must be WGS84 (EPSG:4326)"
-
-    lat, lon, altitude = reference.to_lla(point[0], point[1], point[2])
-    easting, northing = projection.transform(lat, lon)
+    lat, lon, alt = reference.to_lla(point[0], point[1], point[2])
+    easting, northing, altitude = projection(lon, lat, alt)
     return [easting, northing, altitude]
 
 
 def get_proj_transform_matrix(
-    reference: TopocentricConverter, projection: pyproj.Transformer, offset: Tuple[float, float] = None
+    reference: TopocentricConverter, projection: pyproj.Proj, offset: Tuple[float, float] = None
 ) -> NDArray:
     """Get the linear transform from reconstruction coords to geocoords."""
     p = [[1, 0, 0], [0, 1, 0], [0, 0, 1], [0, 0, 0]]

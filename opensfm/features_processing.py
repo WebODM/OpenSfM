@@ -66,9 +66,9 @@ def run_features_processing(data: DataSetBase, images: List[str], force: bool) -
             max_queue_size, int(expected_mb / average_image_size(data))
         )
         processing_size = average_processing_size(data)
-        logger.info(
-            f"Scale-space expected size of a single image : {processing_size} MB"
-        )
+        # logger.info(
+        #     f"Scale-space expected size of a single image : {processing_size} MB"
+        # )
         processes = min(max(1, int(expected_mb / processing_size)), processes)
     else:
         expected_images = default_queue_size
@@ -204,7 +204,7 @@ def read_images(
         queue.put(args, block=True, timeout=full_queue_timeout)
         counter.increment()
         if counter.value() == expected:
-            logger.info("Finished reading images")
+            # logger.info("Finished reading images")
             queue.put(None)
 
 

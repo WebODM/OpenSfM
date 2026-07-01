@@ -4,7 +4,7 @@ import os
 from typing import List, Sequence
 
 import numpy as np
-import pyproj
+from pyproj import Proj, CRS
 from numpy.typing import NDArray
 from opensfm import io, types
 from opensfm import geo
@@ -42,7 +42,7 @@ def run_dataset(
 
     reference = data.load_reference()
 
-    projection = geo.construct_proj_transformer(proj, inverse=True)
+    projection = Proj.from_crs(CRS.from_epsg(4979), CRS.from_proj4(proj), always_xy=True).transform
     t = geo.get_proj_transform_matrix(reference, projection, offset)
 
     if transformation:
@@ -59,7 +59,7 @@ def run_dataset(
     if reconstruction:
         reconstructions = data.load_reconstruction()
         for r in reconstructions:
-            geo.transform_reconstruction_with_proj(r, projection)
+            _transform_reconstruction(r, t)
         output = output or "reconstruction.geocoords.json"
         data.save_reconstruction(reconstructions, output)
 
@@ -76,6 +76,22 @@ def _write_transformation(transformation: NDArray, filename: str) -> None:
         for row in transformation:
             fout.write(" ".join(map(str, row)))
             fout.write("\n")
+
+
+def _transform_reconstruction(
+    reconstruction: types.Reconstruction, transformation: np.ndarray
+) -> None:
+    """Apply a transformation to a reconstruction in-place."""
+    A, b = transformation[:3, :3], transformation[:3, 3]
+    A1 = np.linalg.inv(A)
+
+    for shot in reconstruction.shots.values():
+        R = shot.pose.get_rotation_matrix()
+        shot.pose.set_rotation_matrix(np.dot(R, A1))
+        shot.pose.set_origin(np.dot(A, shot.pose.get_origin()) + b)
+
+    for point in reconstruction.points.values():
+        point.coordinates = list(np.dot(A, point.coordinates) + b)
 
 
 def _transform_image_positions(
