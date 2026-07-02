@@ -6,7 +6,7 @@ if sys.platform == 'win32':
 
 from opensfm import (
     pybundle,
-    pydense,
+    # pydense,
     pyfeatures,
     pygeo,
     pygeometry,
@@ -17,7 +17,7 @@ from opensfm import (
 
 __all__ = [
     "pybundle",
-    "pydense",
+    # "pydense",
     "pyfeatures",
     "pygeo",
     "pygeometry",

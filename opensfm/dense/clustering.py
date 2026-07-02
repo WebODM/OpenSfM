@@ -11,8 +11,8 @@ import logging
 from collections import defaultdict
 from typing import Dict, List, Set, Tuple
 
-import igraph as ig
-import leidenalg
+# import igraph as ig
+# import leidenalg
 import numpy as np
 from numpy.typing import NDArray
 

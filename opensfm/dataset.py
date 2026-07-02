@@ -14,7 +14,7 @@ from opensfm import config, features, geo, io, masking, pygeometry, pymap, rig, 
 from opensfm.dataset_base import DataSetBase
 from PIL.PngImagePlugin import PngImageFile
 import hashlib
-from lz4 import frame as lz4_frame
+# from lz4 import frame as lz4_frame
 
 logger: logging.Logger = logging.getLogger(__name__)
 
