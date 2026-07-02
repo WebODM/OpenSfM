@@ -165,7 +165,7 @@ def detect_alignment_constraints(
 
     X, Xp = alignment_constraints(config, reconstruction, gcp, use_gps)
     if len(X) == 0:
-        logger.warning(
+        logger.debug(
             "Cannot find any GPS or GCP constraint. Using no alignment.")
         return "none"
     if len(X) < 3:
