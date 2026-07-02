@@ -56,9 +56,9 @@ def run_features_processing(data: DataSetBase, images: List[str], force: bool) -
     if mem_ceiling:
         ratio_use = data.config.get("mem_ratio") or 0.9
         mem_available = mem_ceiling * ratio_use
-        # logger.info(
-        #     f"Planning to use {mem_available} MB of RAM (out of {mem_ceiling} MB RAM available) for both processing queue and parallel processing. Memory ratio is {ratio_use}."
-        # )
+        logger.debug(
+            f"Planning to use {mem_available} MB of RAM (out of {mem_ceiling} MB RAM available) for both processing queue and parallel processing. Memory ratio is {ratio_use}."
+        )
 
         # 50% for the queue / 50% for parallel processing
         expected_mb = mem_available / 2
@@ -66,15 +66,15 @@ def run_features_processing(data: DataSetBase, images: List[str], force: bool) -
             max_queue_size, int(expected_mb / average_image_size(data))
         )
         processing_size = average_processing_size(data)
-        # logger.info(
-        #     f"Scale-space expected size of a single image : {processing_size} MB"
-        # )
+        logger.debug(
+            f"Scale-space expected size of a single image : {processing_size} MB"
+        )
         processes = min(max(1, int(expected_mb / processing_size)), processes)
     else:
         expected_images = default_queue_size
-    # logger.info(
-    #     f"Expecting to queue at most {expected_images} images while parallel processing of {processes} images."
-    # )
+    logger.debug(
+        f"Expecting to queue at most {expected_images} images while parallel processing of {processes} images."
+    )
 
     process_queue: ProcessQueue = queue.Queue(expected_images)
     arguments: List[Tuple[str, Union[ProducerArgs, ConsumerArgs]]] = []
@@ -190,8 +190,8 @@ def read_images(
 ) -> None:
     full_queue_timeout = 600
     for image in images:
-        # logger.info(
-        #     f"Reading data for image {image} (queue-size={queue.qsize()})")
+        logger.debug(
+            f"Reading data for image {image} (queue-size={queue.qsize()})")
         image_array = data.load_image(image)
         if data.config["features_bake_segmentation"]:
             segmentation_array = data.load_segmentation(image)
@@ -204,7 +204,7 @@ def read_images(
         queue.put(args, block=True, timeout=full_queue_timeout)
         counter.increment()
         if counter.value() == expected:
-            # logger.info("Finished reading images")
+            logger.debug("Finished reading images")
             queue.put(None)
 
 

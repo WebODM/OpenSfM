@@ -184,11 +184,11 @@ def log_memory(stage: str) -> int:
         else:
             delta = ""
         _last_log_memory_rss = live_bytes
-        logger.info(
+        logger.debug(
             f"[Memory] {stage}: live {live_gb:.2f} GB, peak {peak_gb:.2f} GB{delta}"
         )
     else:
-        logger.info(f"[Memory] {stage}: peak {peak_gb:.1f} GB")
+        logger.debug(f"[Memory] {stage}: peak {peak_gb:.1f} GB")
     return peak_bytes
 
 

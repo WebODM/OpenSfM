@@ -54,7 +54,7 @@ def log_bundle_stats(bundle_type: str, bundle_report: Dict[str, Any]) -> None:
         msg += f"with {num_images}/{num_points}/{num_reprojections} ({num_reprojections / num_points:.2f}) "
         msg += "shots/points/proj. (avg. length)"
 
-    logger.info(msg)
+    logger.debug(msg)
 
 
 def bundle(
@@ -100,7 +100,8 @@ def bundle_with_gcp_annealing(
     for i, multiplier in enumerate(annealing_steps):
         step_config = config.copy()
         step_config["gcp_global_weight"] = base_weight * multiplier
-        logger.info(
+        logger.info(f"Bundle adjustment step {i + 1}/{len(annealing_steps)}")
+        logger.debug(
             "GCP annealing step %d/%d: weight_multiplier=%.2f, "
             "effective_gcp_global_weight=%.4f",
             i + 1, len(annealing_steps), multiplier,
@@ -725,7 +726,7 @@ def remove_outliers(
     outliers, removed_tracks = pysfm.BAHelpers.remove_outliers(
         reconstruction.map, config, point_ids
     )
-    logger.info("Removed outliers: {}".format(len(outliers)))
+    logger.debug("Removed outliers: {}".format(len(outliers)))
     return outliers, removed_tracks
 
 
@@ -917,10 +918,8 @@ def grow_reconstruction(
     # Post-loop finalization
     final_bundle_grid = config["final_bundle_grid"]
 
-    # logger.info("-------------------------------------------------------")
-
     if bootstrap_mode:
-        logger.info(
+        logger.debug(
             "Bootstrap reconstruction - skipping final GCP alignment and bundle adjustment"
         )
         return reconstruction, report
@@ -953,7 +952,7 @@ def grow_reconstruction(
     final_memory = context.log_memory("grow_reconstruction end")
     report["final_memory_usage"] = final_memory
     report["memory_delta"] = final_memory - initial_memory
-    logger.info(
+    logger.debug(
         f"[Memory] Total memory change during grow_reconstruction: "
         f"{(final_memory - initial_memory) / 1024:.1f} GB"
     )
@@ -1121,7 +1120,8 @@ def incremental_reconstruction(
 
     remaining_images = set(images)
     gcp = data.load_ground_control_points()
-    logger.info(f"Loaded {len(gcp)} ground control points.")
+    if len(gcp) > 0:
+        logger.info(f"Loaded {len(gcp)} ground control points.")
 
     common_tracks = None
     if data.config["processes"] > 1:

@@ -188,9 +188,9 @@ def detect_alignment_constraints(
         )
         return "orientation_prior"
     else:
-        # logger.info(
-        #     "Shots and/or GCPs are well-conditioned. Using naive 3D-3D alignment."
-        # )
+        logger.debug(
+            "Shots and/or GCPs are well-conditioned. Using naive 3D-3D alignment."
+        )
         return "naive"
 
 

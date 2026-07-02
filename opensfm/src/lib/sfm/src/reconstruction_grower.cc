@@ -104,7 +104,7 @@ void ReconstructionGrower::LogBundleStats(const std::string& bundle_type,
        << ") shots/points/proj. (avg. length)";
     msg += ss.str();
   }
-  LogInfo(msg);
+  LogDebug(msg);
   LogDebug(report["brief_report"].cast<std::string>());
   for (auto& line : report["irls_report"].cast<py::list>()) {
     LogDebug(line.cast<std::string>());
@@ -213,7 +213,7 @@ void ReconstructionGrower::RemoveOutliersAndUpdate(
     map::Map& map, const py::dict& config, ResectionCandidates& candidates,
     const std::vector<map::LandmarkId>& point_ids) {
   auto result = BAHelpers::RemoveOutliers(map, config, point_ids);
-  LogInfo("Removed outliers: " + std::to_string(result.outliers.size()));
+  LogDebug("Removed outliers: " + std::to_string(result.outliers.size()));
   candidates.Remove(result.outliers, result.removed_tracks);
 }
 
@@ -559,7 +559,7 @@ py::dict ReconstructionGrower::TriangulationReconstruction(
       LogBundleStats("GLOBAL", brep);
 
       auto outlier_result = BAHelpers::RemoveOutliers(map, config);
-      LogInfo("Removed outliers: " +
+      LogDebug("Removed outliers: " +
               std::to_string(outlier_result.outliers.size()));
     }
   }
@@ -633,7 +633,7 @@ py::dict ReconstructionGrower::Grow(
 
   std::stringstream ss;
   while (true) {
-    LogInfo("--------------------------------------------------------");
+    // LogInfo("--------------------------------------------------------");
     auto sorted_candidates = candidates.GetCandidates(images);
     bool any_success = false;
 
@@ -652,14 +652,14 @@ py::dict ReconstructionGrower::Grow(
         ss.str("");
         ss << "Ratio of resected tracks in " << shot_id << ": " << std::fixed
            << std::setprecision(2) << ratio;
-        LogInfo(ss.str());
+        LogDebug(ss.str());
 
         if (ratio > ratio_redundant) {
           ss.str("");
           ss << "Skipping " << shot_id << " due to high redundancy ("
              << std::fixed << std::setprecision(2) << ratio << " > "
              << ratio_redundant << ")";
-          LogInfo(ss.str());
+          LogDebug(ss.str());
 
           redundant_shots.insert(shot_id);
           images.erase(shot_id);
@@ -725,7 +725,7 @@ py::dict ReconstructionGrower::Grow(
         }
         if (gps_count > 0) {
           average_gps_error /= gps_count;
-          LogInfo("Average GPS error for resected shots: " +
+          LogDebug("Average GPS error for resected shots: " +
                   std::to_string(average_gps_error) + " m");
         }
       }
@@ -750,7 +750,7 @@ py::dict ReconstructionGrower::Grow(
           }
           shot_names += ns;
         }
-        LogInfo("Adding " + shot_names + " to the reconstruction");
+        LogDebug("Adding " + shot_names + " to the reconstruction");
       }
 
       // Triangulate new tracks (Fix 2: returns track set)
@@ -815,7 +815,7 @@ py::dict ReconstructionGrower::Grow(
                                 local_result.point_ids);
       }
 
-      LogInfo("Reconstruction now has " + std::to_string(map.NumberOfShots()) +
+      LogDebug("Reconstruction now has " + std::to_string(map.NumberOfShots()) +
               " shots.");
 
       // Check max shots count
@@ -836,7 +836,7 @@ py::dict ReconstructionGrower::Grow(
         ratio_redundant = 1.0;
         local_ba_radius = 0;
       } else {
-        LogInfo("Some images can not be added");
+        //LogInfo("Some images can not be added");
         break;
       }
     }
