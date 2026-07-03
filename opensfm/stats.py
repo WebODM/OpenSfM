@@ -27,6 +27,7 @@ from numpy.typing import NDArray
 from opensfm import feature_loader, geo, geometry, report, io, multiview, pygeometry, pymap, types
 from opensfm.dataset import DataSet, DataSetBase
 from opensfm import features
+from opensfm.report import UNIT_SYSTEMS
 
 logger: logging.Logger = logging.getLogger(__name__)
 
@@ -1402,14 +1403,19 @@ def save_topview(
                 [x, gps_x], [y, gps_y], linestyle="-", color=c_gps, linewidth=linewidth
             )
 
+    units = data.config.get("report_unit_system", "m")
+    us = UNIT_SYSTEMS.get(units, UNIT_SYSTEMS["m"])
+    uf = us["factor"]
+    ul = us["label"]
+
     plt.xticks(
         [0, im_size_x / 2, im_size_x],
-        [0, f"{int(size_x / 2):.0f}", f"{size_x:.0f} meters"],
+        [0, f"{size_x / 2 * uf:.0f}", f"{size_x * uf:.0f} {ul}"],
         fontsize="small",
     )
     plt.yticks(
         [im_size_y, im_size_y / 2, 0],
-        [f"{size_y:.0f} meters", f"{int(size_y / 2):.0f}", 0],
+        [f"{size_y * uf:.0f} {ul}", f"{size_y / 2 * uf:.0f}", 0],
         fontsize="small",
     )
     plt.gca().invert_yaxis()
