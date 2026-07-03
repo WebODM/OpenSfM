@@ -45,7 +45,7 @@ endif()
 
 find_package(LAPACK)
 find_package(SuiteSparse)
-find_package(ceres)
+find_package(ceres REQUIRED)
 find_package(absl REQUIRED)
 
 find_library(TCMALLOC_MINIMAL_LIBRARY tcmalloc_minimal)
