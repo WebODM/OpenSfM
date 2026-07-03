@@ -48,14 +48,14 @@ find_package(SuiteSparse)
 find_package(Ceres)
 find_package(absl REQUIRED)
 
-find_library(TCMALLOC_LIBRARY tcmalloc)
+find_library(TCMALLOC_MINIMAL_LIBRARY tcmalloc_minimal)
 
 # Only link tcmalloc on Linux: on MacOS, it conflicts 
 # with the system allocator and causes crashes.
 if(UNIX AND NOT APPLE)
-    if(TCMALLOC_LIBRARY)
-        message(STATUS "Found tcmalloc: ${TCMALLOC_LIBRARY}")
-        link_libraries(${TCMALLOC_LIBRARY})
+    if(TCMALLOC_MINIMAL_LIBRARY)
+        message(STATUS "Found tcmalloc: ${TCMALLOC_MINIMAL_LIBRARY}")
+        add_link_options("-L${TCMALLOC_MINIMAL_LIBRARY}")
     else()
         message(WARNING "tcmalloc not found. Please install gperftools.")
     endif()
