@@ -354,6 +354,8 @@ def gcp_errors(
             )
             gcp_details.append({
                 "id": gcp.id,
+                "coordinates": list(gcp_enu),
+                "observations": [],
                 "error": None,
                 "n_inliers": 0,
                 "n_total": n_total,
@@ -361,12 +363,38 @@ def gcp_errors(
                 "sigma": sigma_xyz,
             })
             continue
+        
+        # Begin computation of observations
+        observations = []
+        for i, obs in enumerate(gcp.observations):
+            if not obs.shot_id in rec.shots:
+                continue
+            shot = rec.shots[obs.shot_id]
+
+            reprojected = shot.project(gcp_enu)
+            annotated = obs.projection
+
+            r_pixel = features.denormalized_image_coordinates(np.array([[reprojected[0], reprojected[1]]]), shot.camera.width, shot.camera.height)[0]
+            r_pixel[0] /= shot.camera.width
+            r_pixel[1] /= shot.camera.height
+
+            a_pixel = features.denormalized_image_coordinates(np.array([[annotated[0], annotated[1]]]), shot.camera.width, shot.camera.height)[0]
+            a_pixel[0] /= shot.camera.width
+            a_pixel[1] /= shot.camera.height
+            
+            observations.append({
+                'shot_id': obs.shot_id,
+                'annotated': list(a_pixel),
+                'reprojected': list(r_pixel)
+            })
 
         triangulated, inliers_mask = result
         error = triangulated - gcp_enu
         all_errors.append(error)
         gcp_details.append({
             "id": gcp.id,
+            "coordinates": list(gcp_enu),
+            "observations": observations,
             "error": {"x": float(error[0]), "y": float(error[1]), "z": float(error[2])},
             "n_inliers": sum(inliers_mask),
             "n_total": len(inliers_mask),
