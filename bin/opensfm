@@ -14,15 +14,4 @@ else
     exit 1
 fi
 
-if [ "$(uname)" == "Linux" ]; then
-   if [ -f "$CONDA_PREFIX/lib/libtcmalloc.so" ]; then
-      export LD_PRELOAD=$CONDA_PREFIX/lib/libtcmalloc.so
-   elif [ -f "/usr/lib/x86_64-linux-gnu/libtcmalloc.so" ]; then
-      export LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libtcmalloc.so
-   else
-      echo "Can't find libtcmalloc. tcmalloc is mandatory for running OpenSfM."
-      exit 1
-   fi
-fi
-
 "$PYTHON" "$DIR"/opensfm_main.py "$@"
