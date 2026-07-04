@@ -35,7 +35,6 @@ from . import (
     reconstruct_from_prior,
     correct_rolling_shutter,
     undistort,
-    rs_correct,
 )
 from .command_runner import command_runner
 
@@ -72,7 +71,6 @@ opensfm_commands: List[ModuleType] = [
     extend_reconstruction,
     create_submodels,
     align_submodels,
-    rs_correct,
 ]
 
 try:
