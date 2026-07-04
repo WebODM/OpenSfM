@@ -149,32 +149,36 @@ if (OPENSFM_BUILD_TESTS)
 endif()
 
 ####### OpenCL (optional, for PatchMatch dense reconstruction) #######
-find_package(OpenCL QUIET)
-if(OpenCL_FOUND)
-    message(STATUS "OpenCL found: ${OpenCL_LIBRARIES} (version ${OpenCL_VERSION_STRING})")
-
-    # Fetch the C++ header wrapper (CL/opencl.hpp) from Khronos.
-    include(FetchContent)
-    FetchContent_Declare(
-        OpenCLHeadersCpp
-        GIT_REPOSITORY https://github.com/KhronosGroup/OpenCL-CLHPP.git
-        GIT_TAG        v2025.07.22
-        GIT_SHALLOW    TRUE
-    )
-    FetchContent_GetProperties(OpenCLHeadersCpp)
-    if(NOT openclheaderscpp_POPULATED)
-        FetchContent_Populate(OpenCLHeadersCpp)
-    endif()
-    add_library(OpenCL::HeadersCpp INTERFACE IMPORTED)
-    set_target_properties(OpenCL::HeadersCpp PROPERTIES
-        INTERFACE_INCLUDE_DIRECTORIES "${openclheaderscpp_SOURCE_DIR}/include"
-    )
-
-    set(OPENSFM_HAVE_OPENCL ON CACHE BOOL "OpenCL support available" FORCE)
-    add_definitions(-DOPENSFM_HAVE_OPENCL)
-else()
-    message(STATUS "OpenCL not found — PatchMatch dense reconstruction will be disabled")
+if (WIN32)
     set(OPENSFM_HAVE_OPENCL OFF CACHE BOOL "OpenCL support available" FORCE)
+else()
+    find_package(OpenCL QUIET)
+    if(OpenCL_FOUND)
+        message(STATUS "OpenCL found: ${OpenCL_LIBRARIES} (version ${OpenCL_VERSION_STRING})")
+
+        # Fetch the C++ header wrapper (CL/opencl.hpp) from Khronos.
+        include(FetchContent)
+        FetchContent_Declare(
+            OpenCLHeadersCpp
+            GIT_REPOSITORY https://github.com/KhronosGroup/OpenCL-CLHPP.git
+            GIT_TAG        v2025.07.22
+            GIT_SHALLOW    TRUE
+        )
+        FetchContent_GetProperties(OpenCLHeadersCpp)
+        if(NOT openclheaderscpp_POPULATED)
+            FetchContent_Populate(OpenCLHeadersCpp)
+        endif()
+        add_library(OpenCL::HeadersCpp INTERFACE IMPORTED)
+        set_target_properties(OpenCL::HeadersCpp PROPERTIES
+            INTERFACE_INCLUDE_DIRECTORIES "${openclheaderscpp_SOURCE_DIR}/include"
+        )
+
+        set(OPENSFM_HAVE_OPENCL ON CACHE BOOL "OpenCL support available" FORCE)
+        add_definitions(-DOPENSFM_HAVE_OPENCL)
+    else()
+        message(STATUS "OpenCL not found — PatchMatch dense reconstruction will be disabled")
+        set(OPENSFM_HAVE_OPENCL OFF CACHE BOOL "OpenCL support available" FORCE)
+    endif()
 endif()
 
 ####### OpenSfM libraries #######
