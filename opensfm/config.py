@@ -109,11 +109,11 @@ class OpenSfMConfig:
     ##################################
     # Ratio test for matches
     lowes_ratio: float = 0.85
-    # FLANN, BRUTEFORCE, WORDS, OPENCL_HAMMING or OPENCL_BF
-    matcher_type: str = "OPENCL_HAMMING"
+    # FLANN, BRUTEFORCE, WORDS or GPU_HAMMING
+    matcher_type: str = "GPU_HAMMING"
     # Match symmetrically or one-way
     symmetric_matching: bool = True
-    # Number of image pairs used to train the binary projection (OPENCL_HAMMING)
+    # Number of image pairs used to train the binary projection (GPU_HAMMING)
     binary_training_pairs: int = 100
 
     ##################################

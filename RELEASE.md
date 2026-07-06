@@ -37,7 +37,7 @@ This release is a big jump and the first major so here is the list of features :
 > Reference: [Pipeline commands](doc/using.md) · [Configuration reference](doc/configuration.md)
 
 - Features : HAHOG, AKAZE, SIFT, DSP-SIFT, SURF (and ORB) — config: [`feature_type`](doc/configuration.md#features)
-- Descriptors : super-fast online-trained (and pre-trained) binary quantized matching with GPU (OpenCL) matching. Classic OpenCV FLANN matching. — config: [`matcher_type` (`OPENCL_HAMMING` / `OPENCL_BF` / `FLANN`), `binary_training_pairs`](doc/configuration.md#matching)
+- Descriptors : super-fast online-trained (and pre-trained) binary quantized matching with GPU (CUDA) matching. Classic OpenCV FLANN matching. — config: [`matcher_type` (`GPU_HAMMING` / `FLANN`), `binary_training_pairs`](doc/configuration.md#matching)
 - Matching : EXIF-based (GPS), image-based (BoW/VLAD) or hybrid (both) matching. — config: [Pair selection](doc/configuration.md#pair-selection) (`matching_gps_distance`, `matching_bow_neighbors`, `matching_vlad_neighbors`)
 - SfM : fast incremental and direct aerotriangulation support. — [`reconstruct`](doc/using.md#reconstruct); config: [Incremental reconstruction](doc/configuration.md#incremental-reconstruction).
 - Scales to massive scenes : stochastic global bundle adjustment for very large reconstructions (config: [Stochastic bundle](doc/configuration.md#stochastic-bundle)) and split-into-submodels processing — see [Large datasets](doc/large_datasets.md)

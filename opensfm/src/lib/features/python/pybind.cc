@@ -2,7 +2,7 @@
 #include <features/hahog.h>
 #include <features/dspsift.h>
 #include <features/matching.h>
-#include <features/matching_opencl.h>
+#include <features/matching_gpu.h>
 #include <foundation/python_types.h>
 #include <pybind11/eigen.h>
 #include <pybind11/pybind11.h>
@@ -71,20 +71,14 @@ PYBIND11_MODULE(pyfeatures, m) {
   m.def("compute_vlad_distances", features::compute_vlad_distances,
         py::call_guard<py::gil_scoped_release>());
 
-  m.def("opencl_matching_available", features::opencl_matching_available);
-  m.def("opencl_num_devices", features::opencl_num_devices);
-  m.def("match_brute_force_opencl", features::match_brute_force_opencl,
+  m.def("gpu_matching_available", features::gpu_matching_available);
+  m.def("gpu_num_devices", features::gpu_num_devices);
+  m.def("match_hamming_gpu", features::match_hamming_gpu, py::arg("f1"),
+        py::arg("f2"), py::arg("lowes_ratio"), py::arg("device_idx") = 0);
+  m.def("match_hamming_gpu_symmetric", features::match_hamming_gpu_symmetric,
         py::arg("f1"), py::arg("f2"), py::arg("lowes_ratio"),
         py::arg("device_idx") = 0);
-  m.def("match_brute_force_opencl_symmetric",
-        features::match_brute_force_opencl_symmetric, py::arg("f1"),
-        py::arg("f2"), py::arg("lowes_ratio"), py::arg("device_idx") = 0);
-  m.def("match_hamming_opencl", features::match_hamming_opencl, py::arg("f1"),
-        py::arg("f2"), py::arg("lowes_ratio"), py::arg("device_idx") = 0);
-  m.def("match_hamming_opencl_symmetric",
-        features::match_hamming_opencl_symmetric, py::arg("f1"), py::arg("f2"),
-        py::arg("lowes_ratio"), py::arg("device_idx") = 0);
-  m.def("match_hamming_opencl_batch_symmetric",
-        features::match_hamming_opencl_batch_symmetric, py::arg("f1_list"),
+  m.def("match_hamming_gpu_batch_symmetric",
+        features::match_hamming_gpu_batch_symmetric, py::arg("f1_list"),
         py::arg("f2_list"), py::arg("lowes_ratio"), py::arg("device_idx") = 0);
 }

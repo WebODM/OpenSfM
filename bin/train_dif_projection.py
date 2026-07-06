@@ -109,7 +109,6 @@ def main() -> None:
 
             # Force FLANN matching on CPU for training pairs
             training_config = dict(data.config)
-            training_config["use_opencl_matching"] = False
             training_config["matcher_type"] = "FLANN"
             training_config["use_robust_matching"] = True
 

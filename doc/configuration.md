@@ -91,9 +91,9 @@ Domain-size-pooling SIFT — a SIFT variant that pools descriptors across scales
 | Parameter            | Type  | Default   | Description                       |
 | -------------------- | ----- | --------- | --------------------------------- |
 | `lowes_ratio`           | float | `0.85`             | Lowe's ratio test threshold                                        |
-| `matcher_type`          | str   | `"OPENCL_HAMMING"` | `FLANN`, `BRUTEFORCE`, `WORDS`, `OPENCL_HAMMING` or `OPENCL_BF`     |
+| `matcher_type`          | str   | `"GPU_HAMMING"`    | `FLANN`, `BRUTEFORCE`, `WORDS` or `GPU_HAMMING`                    |
 | `symmetric_matching`    | bool  | `true`             | Match in both directions                                           |
-| `binary_training_pairs` | int   | `100`              | Image pairs used to train the binary projection (`OPENCL_HAMMING`) |
+| `binary_training_pairs` | int   | `100`              | Image pairs used to train the binary projection (`GPU_HAMMING`)    |
 
 ### FLANN
 

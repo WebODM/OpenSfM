@@ -2,14 +2,17 @@ set(FEATURES_FILES
     akaze_bind.h
     hahog.h
     matching.h
-    matching_opencl.h
-    matching_opencl_kernels.h
+    matching_gpu.h
+    matching_gpu_cuda.h
     src/akaze_bind.cc
     src/hahog.cc
     src/matching.cc
     src/dspsift.cc
-    src/matching_opencl.cc
+    src/matching_gpu.cc
 )
+if(OPENSFM_HAVE_CUDA)
+    list(APPEND FEATURES_FILES src/matching_gpu_cuda.cu)
+endif()
 add_library(features ${FEATURES_FILES})
 target_link_libraries(features
   PRIVATE
@@ -20,10 +23,12 @@ target_link_libraries(features
 )
 target_include_directories(features PRIVATE ${opensfm_SOURCE_DIR})
 
-if(OPENSFM_HAVE_OPENCL)
-    target_link_libraries(features PRIVATE OpenCL::OpenCL OpenCL::HeadersCpp)
-    # opencl_utils.h is header-only; just need the include path.
-    target_include_directories(features PRIVATE ${opensfm_SOURCE_DIR})
+if(OPENSFM_HAVE_CUDA)
+    # CUDA_LIBRARIES defaults to the static CUDA runtime
+    # (CUDA_USE_STATIC_CUDA_RUNTIME=ON): no libcudart.so needed on user
+    # machines; the runtime dlopens the NVIDIA driver and simply reports
+    # no devices when it is absent.
+    target_link_libraries(features PRIVATE ${CUDA_LIBRARIES})
 endif()
 
 if (OPENSFM_BUILD_TESTS)
@@ -42,12 +47,12 @@ if (OPENSFM_BUILD_TESTS)
                         )
     add_test(features_test features_test)
 
-    set(MATCHING_OPENCL_TEST_FILES
-        test/matching_opencl_test.cc
+    set(MATCHING_GPU_TEST_FILES
+        test/matching_gpu_test.cc
     )
-    add_executable(matching_opencl_test ${MATCHING_OPENCL_TEST_FILES})
-    target_include_directories(matching_opencl_test PRIVATE ${opensfm_SOURCE_DIR})
-    target_link_libraries(matching_opencl_test
+    add_executable(matching_gpu_test ${MATCHING_GPU_TEST_FILES})
+    target_include_directories(matching_gpu_test PRIVATE ${opensfm_SOURCE_DIR})
+    target_link_libraries(matching_gpu_test
                         PRIVATE
                         features
                         foundation
@@ -55,10 +60,7 @@ if (OPENSFM_BUILD_TESTS)
                         ${TEST_MAIN}
                         pybind11::embed
                         )
-    if(OPENSFM_HAVE_OPENCL)
-        target_link_libraries(matching_opencl_test PRIVATE OpenCL::OpenCL OpenCL::HeadersCpp)
-    endif()
-    add_test(matching_opencl_test matching_opencl_test)
+    add_test(matching_gpu_test matching_gpu_test)
 endif()
 
 pybind11_add_module(pyfeatures python/pybind.cc)

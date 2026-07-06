@@ -4,7 +4,7 @@ Quick fixes for the most common issues, focused on the GPU dense stages where ha
 
 ## Hardware requirements
 
-The dense pipeline (depthmaps, fusion, DSM/ortho) needs an **OpenCL-capable GPU**. The sparse SfM stages run on CPU, except for the matching, which is GPU OpenCL by default, and can be deactivated by setting `matcher_type` to `FLANN`,
+The dense pipeline (depthmaps, fusion, DSM/ortho) needs an **OpenCL-capable GPU**. The sparse SfM stages run on CPU, except for the matching, which runs on NVIDIA GPUs (CUDA, compute capability 5.0+) by default and falls back to CPU FLANN when no CUDA device is available (or set `matcher_type` to `FLANN` to force it),
 
 |               | RAM   | GPU (OpenCL) |
 | ------------- | ----- | ------------ |

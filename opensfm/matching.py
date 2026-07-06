@@ -100,7 +100,7 @@ def match_pairs_with_binary_projection_batched(
         "Batched Hamming matching %d pairs (%d total features) on GPU",
         len(pairs), total_features)
     time_start = time.time()
-    batch_results = pyfeatures.match_hamming_opencl_batch_symmetric(
+    batch_results = pyfeatures.match_hamming_gpu_batch_symmetric(
         bin1_list, bin2_list, config["lowes_ratio"], 0)
     logger.info(
         "Batched Hamming matching completed in %.2f seconds", time.time() - time_start
@@ -132,44 +132,34 @@ def match_images_with_pairs(
     # Fallback to FLANN is GPU matching is requested but not available.
     overriden_config = data.config.copy()
     overriden_config.update(config_override)
-    required_gpu = overriden_config["matcher_type"].upper() in [
-        "OPENCL_HAMMING", "OPENCL_BF"]
-    required_opencl_hamming = overriden_config["matcher_type"].upper() in [
-        "OPENCL_HAMMING"]
-
-    use_gpu = required_gpu
-    if required_gpu and not pyfeatures.opencl_matching_available():
+    use_gpu = overriden_config["matcher_type"].upper() == "GPU_HAMMING"
+    if use_gpu and not pyfeatures.gpu_matching_available():
         logger.warning(
-            "GPU matching requested but OpenCL is not available. Falling back to CPU FLANN."
+            "GPU matching requested but CUDA is not available. Falling back to CPU FLANN."
         )
         overriden_config["matcher_type"] = "FLANN"
         use_gpu = False
-    if use_gpu:
-        num_devices = pyfeatures.opencl_num_devices()
-        logger.info(
-            "Computing pair matching on GPU (OpenCL, %d device(s))" % num_devices
-        )
-        overriden_config["_opencl_device_idx"] = 0
 
-    if use_gpu and required_opencl_hamming:
+    if use_gpu:
+        num_devices = pyfeatures.gpu_num_devices()
+        logger.info(
+            "Computing pair matching on GPU (CUDA, %d device(s))" % num_devices
+        )
+        # Descriptor matching runs batched on the GPU; robust matching
+        # then runs per-pair on the CPU.
         batch_results = match_pairs_with_binary_projection_batched(
             data, pairs, overriden_config, cameras, exifs
         )
         args = list(match_arguments(
             pairs, data, overriden_config, cameras, exifs, poses, batch_results))
-        use_gpu = False  # do robust matching on CPU, as GPU matching already done
     else:
         # Build per-pair arguments
         args = list(match_arguments(
             pairs, data, overriden_config, cameras, exifs, poses, None))
 
-    if use_gpu:
-        logger.info("Computing pair matching with GPU 0")
-        matches = [match_unwrap_args(a) for a in args]
-    else:
-        logger.info("Computing pair matching with %d processes" % processes)
-        matches = context.parallel_map(
-            match_unwrap_args, args, processes, jobs_per_process)
+    logger.info("Computing pair matching with %d processes" % processes)
+    matches = context.parallel_map(
+        match_unwrap_args, args, processes, jobs_per_process)
     logger.info(
         "Matched {} pairs {} in {} seconds ({} seconds/pair).".format(
             len(pairs),
@@ -473,12 +463,7 @@ def _match_descriptors_impl(
         return dummy_ret
 
     symmetric_matching = overriden_config["symmetric_matching"]
-    if matcher_type == "OPENCL_BF":
-        if symmetric_matching:
-            matches = match_brute_force_symmetric(d1, d2, overriden_config)
-        else:
-            matches = match_brute_force(d1, d2, overriden_config)
-    elif matcher_type == "WORDS":
+    if matcher_type == "WORDS":
         words1 = feature_loader.instance.load_words(data, im1, masked=True)
         words2 = feature_loader.instance.load_words(data, im2, masked=True)
         if words1 is None or words2 is None:
@@ -736,42 +721,6 @@ def match(
     if len(rmatches) < robust_matching_min_match:
         return np.array([])
     return np.array(rmatches, dtype=int)
-
-
-def match_opencl_bruteforce(f1: NDArray, f2: NDArray, config: Dict[str, Any]):
-    """
-    Match real-valued descriptors using brute force on OpenCL GPU.
-
-    Args:
-    f1: real-valued descriptors of the first image, shape (N1, K), dtype float32
-    f2: real-valued descriptors of the second image, shape (N2, K), dtype float32
-    N1 and N2 must be multiples of 4, and K must be a multiple of 4.
-    config: config parameters, must contain "lowes_ratio"
-    """
-    ratio = config["lowes_ratio"]
-    device_index = config["_opencl_device_idx"]
-    matches = pyfeatures.match_brute_force_opencl(
-        f1, f2, ratio, device_index
-    )
-    return [(int(m[0]), int(m[1])) for m in matches]
-
-
-def match_opencl_bruteforce_symmetric(f1: NDArray, f2: NDArray, config: Dict[str, Any]):
-    """
-    Match real-valued descriptors using symmetric brute force on OpenCL GPU.
-
-    Args:
-    f1: real-valued descriptors of the first image, shape (N1, K), dtype float32
-    f2: real-valued descriptors of the second image, shape (N2, K), dtype float32
-    N1 and N2 must be multiples of 4, and K must be a multiple of 4.
-    config: config parameters, must contain "lowes_ratio"
-    """
-    ratio = config["lowes_ratio"]
-    device_index = config["_opencl_device_idx"]
-    matches = pyfeatures.match_brute_force_opencl_symmetric(
-        f1, f2, ratio, device_index
-    )
-    return [(int(m[0]), int(m[1])) for m in matches]
 
 
 def match_words(
@@ -1272,7 +1221,6 @@ def generate_binary_cache(
 
         # Force FLANN matching on CPU for training pairs.
         training_config = dict(config)
-        training_config["use_opencl_matching"] = False
         training_config["matcher_type"] = "FLANN"
         training_config["use_robust_matching"] = True
 

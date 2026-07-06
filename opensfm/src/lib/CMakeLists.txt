@@ -15,6 +15,9 @@ include(OpenSfMCommon)
 cmake_policy(SET CMP0063 NEW)
 # Re-activate once we can have a decent version of CMake (> 3.27)
 # cmake_policy(SET CMP0148 NEW)
+IF(POLICY CMP0104)
+	CMAKE_POLICY(SET CMP0104 NEW)
+ENDIF()
 
 # Prevent Windows.h from defining min/max macros that break std::min/std::max
 if(MSVC)
@@ -179,6 +182,73 @@ else()
         message(STATUS "OpenCL not found — PatchMatch dense reconstruction will be disabled")
         set(OPENSFM_HAVE_OPENCL OFF CACHE BOOL "OpenCL support available" FORCE)
     endif()
+endif()
+
+####### CUDA (optional, for GPU feature matching) #######
+SET(OPENSFM_USE_CUDA ON CACHE BOOL "Enable CUDA GPU feature matching")
+SET(OPENSFM_MAX_CUDA_COMPATIBILITY ON CACHE BOOL "Build for maximum CUDA device compatibility")
+
+if(OPENSFM_USE_CUDA)
+    if(UNIX)
+        if (EXISTS "/usr/local/cuda/lib64/stubs")
+            SET(CMAKE_LIBRARY_PATH "/usr/local/cuda/lib64/stubs")
+        endif()
+    endif()
+    FIND_PACKAGE(CUDA)
+    if(CUDA_FOUND)
+        SET(CMAKE_CUDA_STANDARD 17)
+        SET(CMAKE_CUDA_STANDARD_REQUIRED ON)
+        EXECUTE_PROCESS(COMMAND "${CMAKE_CUDA_COMPILER}" --list-gpu-arch
+                OUTPUT_VARIABLE LIST_GPU_ARCH
+                ERROR_QUIET)
+        if(NOT LIST_GPU_ARCH AND OPENSFM_MAX_CUDA_COMPATIBILITY)
+            message(WARNING "Cannot compile for max CUDA compatibility, nvcc does not support --list-gpu-arch")
+            set(OPENSFM_MAX_CUDA_COMPATIBILITY NO)
+        endif()
+        if(NOT OPENSFM_MAX_CUDA_COMPATIBILITY)
+            if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
+				SET(CMAKE_CUDA_ARCHITECTURES 75)
+			endif()
+        else()
+            # Build for maximum compatibility
+            # https://arnon.dk/matching-sm-architectures-arch-and-gencode-for-various-nvidia-cards/
+            UNSET(CMAKE_CUDA_ARCHITECTURES)
+
+            # Extract list of arch and gencodes
+            STRING(REPLACE "\r" "" LIST_GPU_ARCH ${LIST_GPU_ARCH})
+            STRING(REPLACE "\n" ";" LIST_GPU_ARCH ${LIST_GPU_ARCH})
+
+            EXECUTE_PROCESS(COMMAND "${CMAKE_CUDA_COMPILER}" --list-gpu-code
+                OUTPUT_VARIABLE LIST_GPU_CODE
+                ERROR_QUIET)
+            STRING(REPLACE "\r" "" LIST_GPU_CODE ${LIST_GPU_CODE})
+            STRING(REPLACE "\n" ";" LIST_GPU_CODE ${LIST_GPU_CODE})
+
+            LIST(GET LIST_GPU_CODE 0 TARGET_GPU_CODE)
+            SET(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -arch=${TARGET_GPU_CODE}")
+
+            SET(IDX 0)
+            foreach(GPU_ARCH ${LIST_GPU_ARCH})
+                STRING(REPLACE "compute_" "" CC_ARCH ${GPU_ARCH})
+                LIST(APPEND CMAKE_CUDA_ARCHITECTURES ${CC_ARCH})
+                LIST(GET LIST_GPU_CODE ${IDX} GPU_CODE)
+                SET(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=${GPU_ARCH},code=${GPU_CODE}")
+                MATH(EXPR IDX "${IDX}+1")
+            endforeach()
+            MESSAGE("-- Set CUDA flags: " ${CMAKE_CUDA_FLAGS})
+        endif()
+        SET(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --expt-relaxed-constexpr")
+        INCLUDE_DIRECTORIES(${CUDA_INCLUDE_DIRS})
+        SET(OPENSFM_HAVE_CUDA ON CACHE BOOL "CUDA support available" FORCE)
+        ADD_DEFINITIONS(-DOPENSFM_HAVE_CUDA)
+        MESSAGE(STATUS "CUDA found: GPU feature matching enabled")
+        ENABLE_LANGUAGE(CUDA)
+    else()
+        SET(OPENSFM_HAVE_CUDA OFF CACHE BOOL "CUDA support available" FORCE)
+        MESSAGE("-- Can't find CUDA. Continuing without it.")
+    endif()
+else()
+    SET(OPENSFM_HAVE_CUDA OFF CACHE BOOL "CUDA support available" FORCE)
 endif()
 
 ####### OpenSfM libraries #######
