@@ -612,7 +612,7 @@ def match_robust(
 
     robust_matching_min_match = overriden_config["robust_matching_min_match"]
     success = len(rmatches_unfiltered) >= robust_matching_min_match
-    logger.info("Matching: {} <=> {}: {}".format(im1, im2, "OK" if success else "NO"))
+    logger.info("Matching {} <=> {}: {} {}".format(im1, im2, len(rmatches_unfiltered), "OK" if success else "NO"))
     # logger.debug(
     #     "Matching {} and {}. T-robust: {:1.3f} "
     #     "Matches: {} Robust: {} Success: {}".format(
