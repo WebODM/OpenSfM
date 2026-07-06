@@ -612,7 +612,7 @@ def match_robust(
 
     robust_matching_min_match = overriden_config["robust_matching_min_match"]
     success = len(rmatches_unfiltered) >= robust_matching_min_match
-    logger.info("Match: {} <=> {}: {}".format(im1, im2, len(rmatches_unfiltered) >= robust_matching_min_match))
+    logger.info("Matching: {} <=> {}: {}".format(im1, im2, "OK" if success else "NO"))
     # logger.debug(
     #     "Matching {} and {}. T-robust: {:1.3f} "
     #     "Matches: {} Robust: {} Success: {}".format(
@@ -1326,7 +1326,7 @@ def collect_training_pairs(
         if match_arr.ndim != 2 or match_arr.shape[1] != 2:
             continue
 
-        logger.info(
+        logger.debug(
             "Collected %d matches for training from pair (%s, %s)",
             len(match_arr), im1, im2,
         )
@@ -1455,7 +1455,7 @@ def optimize_dif_thresholds(
     t = np.zeros(n_bits, dtype=np.float32)
 
     for i in range(n_bits):
-        logger.info("Optimizing threshold for bit %d/%d", i + 1, n_bits)
+        logger.debug("Optimizing threshold for bit %d/%d", i + 1, n_bits)
         yp1, yp2 = proj_p1[i], proj_p2[i]
         yn1, yn2 = proj_n1[i], proj_n2[i]
 
