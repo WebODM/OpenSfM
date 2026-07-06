@@ -13,7 +13,7 @@ from opensfm import pymap
 Scalars = Union[float, NDArray]
 
 WGS84_a = 6378137.0
-WGS84_b = 6356752.314245
+WGS84_b = 6356752.314245179
 
 DEFAULT_GPS_STD: NDArray = np.array([5.0, 5.0, 15.0])
 
