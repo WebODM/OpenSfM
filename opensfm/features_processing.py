@@ -208,7 +208,7 @@ def read_images(
             queue.put(args, block=True, timeout=full_queue_timeout)
             counter.increment()
             if counter.value() == expected:
-                logger.info("Finished reading images")
+                logger.debug("Finished reading images")
                 queue.put(None)
 
 
