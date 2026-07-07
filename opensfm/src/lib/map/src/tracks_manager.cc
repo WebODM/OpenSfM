@@ -1,6 +1,6 @@
 #include <absl/container/flat_hash_map.h>
 #include <absl/container/flat_hash_set.h>
-#include <fast_float/fast_float.h>
+// #include <fast_float/fast_float.h>
 #include <foundation/types.h>
 #include <foundation/union_find.h>
 #include <map/tracks_manager.h>
@@ -46,7 +46,7 @@ static int svToInt(std::string_view sv) {
 
 static double svToDouble(std::string_view sv) {
   double val = 0.0;
-  fast_float::from_chars(sv.data(), sv.data() + sv.size(), val);
+  std::from_chars(sv.data(), sv.data() + sv.size(), val);
   return val;
 }
 

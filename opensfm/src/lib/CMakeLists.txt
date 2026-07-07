@@ -9,8 +9,17 @@ if(NOT CMAKE_BUILD_TYPE)
       "Choose the type of build, options are: None Debug Release RelWithDebInfo MinSizeRel."
       FORCE)
 endif()
+
+if (WIN32)
+# Fixes a problem with finding/linking suitesparse :/
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../cmake/win32")
+include("../OpenSfMCommon")
+else()
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../cmake")
 include(OpenSfMCommon)
+endif()
+
+
 
 cmake_policy(SET CMP0063 NEW)
 # Re-activate once we can have a decent version of CMake (> 3.27)
@@ -103,6 +112,7 @@ target_compile_options(simdjson PRIVATE -w)
 include_directories(third_party/vlfeat)
 if (CERES_FOUND)
     include_directories(${CERES_INCLUDE_DIR})
+    include_directories(${CERES_INCLUDE_DIR}/ceres/internal/miniglog)
 endif()
 
 ####### Debugging #######
