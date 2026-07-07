@@ -1,18 +1,20 @@
+# pyre-strict
 import itertools
 import logging
 import os
-from typing import Iterator, List, Dict, Optional, Callable
+from typing import Iterator, List, Dict, Optional, Callable, Tuple
 
 import cv2
 import numpy as np
+from numpy.typing import NDArray
 from opensfm import (
     features,
+    features_processing,
     log,
     pygeometry,
     pymap,
     transformations as tf,
     types,
-    features_processing,
 )
 from opensfm.context import parallel_map
 from opensfm.dataset import UndistortedDataSet
@@ -48,8 +50,14 @@ def undistort_reconstruction(
         elif shot.camera.projection_type == "brown":
             urec.add_camera(perspective_camera_from_brown(shot.camera))
             subshots = [get_shot_with_different_camera(urec, shot, image_format)]
-        elif shot.camera.projection_type in ["fisheye", "fisheye_opencv"]:
+        elif shot.camera.projection_type == "fisheye":
             urec.add_camera(perspective_camera_from_fisheye(shot.camera))
+            subshots = [get_shot_with_different_camera(urec, shot, image_format)]
+        elif shot.camera.projection_type == "fisheye_opencv":
+            urec.add_camera(perspective_camera_from_fisheye_opencv(shot.camera))
+            subshots = [get_shot_with_different_camera(urec, shot, image_format)]
+        elif shot.camera.projection_type == "fisheye62":
+            urec.add_camera(perspective_camera_from_fisheye62(shot.camera))
             subshots = [get_shot_with_different_camera(urec, shot, image_format)]
         elif pygeometry.Camera.is_panorama(shot.camera.projection_type):
             subshot_width = int(data.config["depthmap_resolution"])
@@ -108,7 +116,7 @@ def undistort_reconstruction_with_images(
             ratio_use = 0.9
             mem_available *= ratio_use
 
-            processing_size = data.config["depthmap_resolution"]
+            processing_size = data.config["depthmap_max_image_size"]
             output_size = processing_size * processing_size * 4 / 1024 / 1024
 
             undistort_factor = 3  # 1 for original image, 2 for (U,V) remapping
@@ -178,7 +186,9 @@ def dump_camera_mapping_cache(dest_file):
 
     np.savez_compressed(dest_file, ids=ids, **outs)
 
-def undistort_image_and_masks(arguments) -> None:
+def undistort_image_and_masks(
+    arguments: Tuple[pymap.Shot, List[pymap.Shot], DataSetBase, UndistortedDataSet, Callable[[str, np.ndarray], np.ndarray]],
+) -> None:
     shot, undistorted_shots, data, udata, imageFilter = arguments
     log.setup()
     logger.info("Undistorting image {}".format(shot.id))
@@ -193,12 +203,23 @@ def undistort_image_and_masks(arguments) -> None:
         # Don't allow alpha channel
         if len(image.shape) == 3 and image.shape[2] > 3:
             image = image[:,:,:3]
+        # height, width = image.shape[:2]
+        # remap = _compute_camera_remap(shot, undistorted_shots, height, width)
 
         undistorted = undistort_image(
-            shot, undistorted_shots, image, cv2.INTER_AREA, max_size
+            shot, undistorted_shots, image, cv2.INTER_AREA, max_size,
+            # remap=remap,
         )
         for k, v in undistorted.items():
             udata.save_undistorted_image(k, v)
+
+        # Validity masks from the same remap coordinates (no recomputation).
+        # Needed for fusion, but not needed in ODX
+        # validity = _validity_from_remap(
+        #     remap, height, width, undistorted_shots, max_size
+        # )
+        # for k, v in validity.items():
+        #     udata.save_undistorted_validity_mask(k, v)
 
     # Undistort mask
     mask = data.load_mask(shot.id)
@@ -240,10 +261,11 @@ def compute_camera_mapping_cached(camera, new_camera, width, height):
 def undistort_image(
     shot: pymap.Shot,
     undistorted_shots: List[pymap.Shot],
-    original: Optional[np.ndarray],
-    interpolation,
+    original: Optional[NDArray],
+    interpolation: int,
     max_size: int,
-) -> Dict[str, np.ndarray]:
+    remap: Optional[Dict[str, Tuple[NDArray, NDArray]]] = None,
+) -> Dict[str, NDArray]:
     """Undistort an image into a set of undistorted ones.
 
     Args:
@@ -254,25 +276,31 @@ def undistort_image(
         original: the original distorted image array.
         interpolation: the opencv interpolation flag to use.
         max_size: maximum size of the undistorted image.
+        remap: optional pre-computed {shot_id: (map1, map2)} from
+            _compute_camera_remap to avoid recomputing the mapping.
     """
     if original is None:
         return {}
 
     projection_type = shot.camera.projection_type
-    if projection_type in ["perspective", "brown", "fisheye", "fisheye_opencv"]:
+    if projection_type in _REMAP_CAMERA_TYPES:
         [undistorted_shot] = undistorted_shots
-        new_camera = undistorted_shot.camera
-        height, width = original.shape[:2]
-        map1, map2 = compute_camera_mapping_cached(
-            shot.camera, new_camera, width, height
-        )
+        if remap and undistorted_shot.id in remap:
+            map1, map2 = remap[undistorted_shot.id]
+        else:
+            new_camera = undistorted_shot.camera
+            height, width = original.shape[:2]
+            map1, map2 = compute_camera_mapping_cached(
+                shot.camera, new_camera, width, height
+            )
         undistorted = cv2.remap(original, map1, map2, interpolation)
         return {undistorted_shot.id: scale_image(undistorted, max_size)}
     elif pygeometry.Camera.is_panorama(projection_type):
         subshot_width = undistorted_shots[0].camera.width
         width = 4 * subshot_width
         height = width // 2
-        image = cv2.resize(original, (width, height), interpolation=interpolation)
+        image = cv2.resize(original, (width, height),
+                           interpolation=interpolation)
         mint = cv2.INTER_LINEAR if interpolation == cv2.INTER_AREA else interpolation
         res = {}
         for undistorted_shot in undistorted_shots:
@@ -289,7 +317,7 @@ def undistort_image(
         )
 
 
-def scale_image(image: np.ndarray, max_size: int) -> np.ndarray:
+def scale_image(image: NDArray, max_size: int) -> NDArray:
     """Scale an image not to exceed max_size."""
     height, width = image.shape[:2]
     factor = max_size / float(max(height, width))
@@ -298,6 +326,63 @@ def scale_image(image: np.ndarray, max_size: int) -> np.ndarray:
     width = int(round(width * factor))
     height = int(round(height * factor))
     return cv2.resize(image, (width, height), interpolation=cv2.INTER_NEAREST)
+_REMAP_CAMERA_TYPES = [
+    "perspective",
+    "brown",
+    "fisheye",
+    "fisheye_opencv",
+    "fisheye62",
+]
+
+
+def _compute_camera_remap(
+    shot: pymap.Shot,
+    undistorted_shots: List[pymap.Shot],
+    height: int,
+    width: int,
+) -> Dict[str, Tuple[NDArray, NDArray]]:
+    """Compute per-undistorted-view remap coordinate maps.
+
+    For standard camera types returns ``{shot_id: (map1, map2)}``.
+    For panoramas the remap is not used, so an empty dict is returned.
+    """
+    if shot.camera.projection_type in _REMAP_CAMERA_TYPES:
+        [undistorted_shot] = undistorted_shots
+        map1, map2 = pygeometry.compute_camera_mapping(
+            shot.camera, undistorted_shot.camera, width, height
+        )
+        return {undistorted_shot.id: (map1, map2)}
+    return {}
+
+
+def _validity_from_remap(
+    remap: Dict[str, Tuple[NDArray, NDArray]],
+    height: int,
+    width: int,
+    undistorted_shots: List[pymap.Shot],
+    max_size: int,
+) -> Dict[str, NDArray]:
+    """Build per-pixel validity masks from pre-computed remap maps.
+
+    Pixels mapping outside the original image bounds are marked 0 (invalid).
+    Views without remap maps (e.g. panoramas) get an all-valid (255) mask.
+    """
+    result: Dict[str, NDArray] = {}
+    for s in undistorted_shots:
+        if s.id in remap:
+            map1, map2 = remap[s.id]
+            valid = (
+                (map1 >= 0) & (map1 < width - 1)
+                & (map2 >= 0) & (map2 < height - 1)
+            )
+            mask = np.where(valid, np.uint8(255), np.uint8(0))
+            result[s.id] = scale_image(mask, max_size)
+        else:
+            result[s.id] = np.full(
+                (int(s.camera.height), int(s.camera.width)),
+                255, dtype=np.uint8,
+            )
+    return result
 
 
 def add_image_format_extension(shot_id: str, image_format: str) -> str:
@@ -426,12 +511,12 @@ def perspective_views_of_a_panorama(
 
 
 def render_perspective_view_of_a_panorama(
-    image: np.ndarray,
+    image: NDArray,
     panoshot: pymap.Shot,
     perspectiveshot: pymap.Shot,
-    interpolation=cv2.INTER_LINEAR,
-    borderMode=cv2.BORDER_WRAP,
-) -> np.ndarray:
+    interpolation: int = cv2.INTER_LINEAR,
+    borderMode: int = cv2.BORDER_WRAP,
+) -> NDArray:
     """Render a perspective view of a panorama."""
     # Get destination pixel coordinates
     dst_shape = (perspectiveshot.camera.height, perspectiveshot.camera.width)

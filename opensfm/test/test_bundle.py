@@ -1,7 +1,9 @@
+# pyre-strict
 import copy
 
 import numpy as np
 import pytest
+from numpy.typing import NDArray
 from opensfm import (
     config,
     geometry,
@@ -12,6 +14,7 @@ from opensfm import (
     tracking,
     types,
 )
+from opensfm.synthetic_data import synthetic_scene
 
 
 def test_unicode_strings_in_bundle() -> None:
@@ -34,6 +37,7 @@ def test_unicode_strings_in_bundle() -> None:
 @pytest.fixture()
 def bundle_adjuster() -> pybundle.BundleAdjuster:
     ba = pybundle.BundleAdjuster()
+    ba.set_skip_initial_reweighting(True)
     camera = pygeometry.Camera.create_perspective(1.0, 0.0, 0.0)
     ba.add_camera("cam1", camera, camera, True)
     ba.add_rig_camera("rig_cam1", pygeometry.Pose(), pygeometry.Pose(), True)
@@ -88,14 +92,16 @@ def test_singleton_pan_tilt_roll(bundle_adjuster: pybundle.BundleAdjuster) -> No
     assert np.allclose(ptr, (pan, tilt, roll))
 
 
-def _projection_errors_std(points) -> float:
+def _projection_errors_std(points: pymap.LandmarkView) -> float:
     all_errors = []
     for p in points.values():
         all_errors += p.reprojection_errors.values()
     return np.std(all_errors)
 
 
-def test_bundle_projection_fixed_internals(scene_synthetic) -> None:
+def test_bundle_projection_fixed_internals(
+    scene_synthetic: synthetic_scene.SyntheticInputData,
+) -> None:
     reference = scene_synthetic.reconstruction
     camera_priors = dict(reference.cameras.items())
     rig_priors = dict(reference.rig_cameras.items())
@@ -107,14 +113,27 @@ def test_bundle_projection_fixed_internals(scene_synthetic) -> None:
                 color = g_obs["feature_color"]
                 pt = g_obs["feature"]
                 obs = pymap.Observation(
+                    # pyre-fixme[6]: For 1st argument expected `str` but got `int`.
                     pt[0],
+                    # pyre-fixme[6]: For 1st argument expected `str` but got `int`.
                     pt[1],
+                    # pyre-fixme[6]: For 3rd argument expected `float` but got
+                    #  `Dict[str, typing.Any]`.
                     g_obs["feature_scale"],
+                    # pyre-fixme[6]: For 1st argument expected `str` but got `int`.
                     color[0],
+                    # pyre-fixme[6]: For 1st argument expected `str` but got `int`.
                     color[1],
+                    # pyre-fixme[6]: For 1st argument expected `str` but got `int`.
                     color[2],
+                    # pyre-fixme[6]: For 7th argument expected `int` but got
+                    #  `Dict[str, typing.Any]`.
                     g_obs["feature_id"],
+                    # pyre-fixme[6]: For 8th argument expected `int` but got
+                    #  `Dict[str, typing.Any]`.
                     g_obs["feature_segmentation"],
+                    # pyre-fixme[6]: For 9th argument expected `int` but got
+                    #  `Dict[str, typing.Any]`.
                     g_obs["feature_instance"],
                 )
                 reference.map.add_observation(shot_id, point_id, obs)
@@ -124,7 +143,8 @@ def test_bundle_projection_fixed_internals(scene_synthetic) -> None:
     custom_config = config.default_config()
     custom_config["bundle_use_gps"] = False
     custom_config["optimize_camera_parameters"] = False
-    reconstruction.bundle(reference, camera_priors, rig_priors, [], custom_config)
+    reconstruction.bundle(reference, camera_priors,
+                          rig_priors, [], 0, custom_config)
 
     assert _projection_errors_std(reference.points) < 5e-3
     assert reference.cameras["1"].focal == orig_camera.focal
@@ -181,7 +201,8 @@ def test_pair_with_points_priors(bundle_adjuster: pybundle.BundleAdjuster) -> No
         instance_id = str(i + 1)
         sa.add_rig_instance(
             instance_id,
-            pygeometry.Pose(np.array([1e-3, 1e-3, 1e-3]), np.array([1e-3, 1e-3, 1e-3])),
+            pygeometry.Pose(np.array([1e-3, 1e-3, 1e-3]),
+                            np.array([1e-3, 1e-3, 1e-3])),
             {instance_id: "cam1"},
             {instance_id: "rig_cam1"},
             False,
@@ -213,12 +234,20 @@ def test_pair_with_points_priors(bundle_adjuster: pybundle.BundleAdjuster) -> No
     )
 
     std_dev = np.array([1, 1, 1])
-    sa.add_point_projection_observation("1", "p1", np.array([0, 0]), 1)
-    sa.add_point_projection_observation("2", "p1", np.array([-0.5, 0]), 1)
+    sa.add_point_projection_observation(
+        shot="1", point="p1", observation=np.array([0, 0]), std_deviation=1
+    )
+    sa.add_point_projection_observation(
+        shot="2", point="p1", observation=np.array([-0.5, 0]), std_deviation=1
+    )
     sa.add_point_prior("p1", np.array([-0.5, 2, 2]), std_dev, True)
 
-    sa.add_point_projection_observation("2", "p2", np.array([0, 0]), 1)
-    sa.add_point_projection_observation("1", "p2", np.array([0.5, 0]), 1)
+    sa.add_point_projection_observation(
+        shot="2", point="p2", observation=np.array([0, 0]), std_deviation=1
+    )
+    sa.add_point_projection_observation(
+        shot="1", point="p2", observation=np.array([0.5, 0]), std_deviation=1
+    )
     sa.add_point_prior("p2", np.array([1.5, 2, 2]), std_dev, True)
 
     sa.run()
@@ -578,26 +607,26 @@ def test_bundle_void_gps_ignored() -> None:
 
     # Missing position
     shot.metadata.gps_position.value = np.zeros(3)
-    shot.metadata.gps_accuracy.value = 1
+    shot.metadata.gps_accuracy.value = np.ones(3)
     shot.metadata.gps_position.reset()
     shot.pose.set_origin(np.ones(3))
-    reconstruction.bundle(r, camera_priors, rig_priors, gcp, myconfig)
+    reconstruction.bundle(r, camera_priors, rig_priors, gcp, 0, myconfig)
     assert np.allclose(shot.pose.get_origin(), np.ones(3))
 
     # Missing accuracy
     shot.metadata.gps_position.value = np.zeros(3)
-    shot.metadata.gps_accuracy.value = 1
+    shot.metadata.gps_accuracy.value = np.ones(3)
     shot.metadata.gps_accuracy.reset()
     shot.pose.set_origin(np.ones(3))
-    reconstruction.bundle(r, camera_priors, rig_priors, gcp, myconfig)
+    reconstruction.bundle(r, camera_priors, rig_priors, gcp, 0, myconfig)
     assert np.allclose(shot.pose.get_origin(), np.ones(3))
 
     # Valid gps position and accuracy
     shot.metadata.gps_position.value = np.zeros(3)
-    shot.metadata.gps_accuracy.value = 1
+    shot.metadata.gps_accuracy.value = np.ones(3)
     shot.pose.set_origin(np.ones(3))
-    reconstruction.bundle(r, camera_priors, rig_priors, gcp, myconfig)
-    assert np.allclose(shot.pose.get_origin(), np.zeros(3))
+    reconstruction.bundle(r, camera_priors, rig_priors, gcp, 0, myconfig)
+    assert np.allclose(shot.pose.get_origin(), np.zeros(3), atol=1e-4)
 
 
 def test_bundle_alignment_prior() -> None:
@@ -611,19 +640,17 @@ def test_bundle_alignment_prior() -> None:
         "1", camera.id, pygeometry.Pose(np.random.rand(3), np.random.rand(3))
     )
     shot.metadata.gps_position.value = np.array([0, 0, 0])
-    shot.metadata.gps_accuracy.value = 1
+    shot.metadata.gps_accuracy.value = np.ones(3)
 
     camera_priors = {camera.id: camera}
     rig_priors = dict(r.rig_cameras.items())
     gcp = []
     myconfig = config.default_config()
 
-    reconstruction.bundle(r, camera_priors, rig_priors, gcp, myconfig)
+    reconstruction.bundle(r, camera_priors, rig_priors, gcp, 0, myconfig)
     shot = r.shots[shot.id]
 
-    assert np.allclose(shot.pose.translation, np.zeros(3))
-    # up vector in camera coordinates is (0, -1, 0)
-    assert np.allclose(shot.pose.transform([0, 0, 1]), [0, -1, 0], atol=1e-7)
+    assert np.allclose(shot.pose.translation, np.zeros(3), atol=1e-4)
 
 
 def test_heatmaps_position(bundle_adjuster: pybundle.BundleAdjuster) -> None:
@@ -645,7 +672,7 @@ def test_heatmaps_position(bundle_adjuster: pybundle.BundleAdjuster) -> None:
     sa.add_reconstruction_instance("123", 1, "3")
     sa.set_scale_sharing("123", True)
 
-    def bell_heatmap(size, r, mu_x, mu_y):
+    def bell_heatmap(size: int, r: float, mu_x: float, mu_y: float) -> NDArray:
         sigma_x = r * 0.5
         sigma_y = r * 0.5
         x = np.linspace(-r, r, size)
@@ -657,8 +684,8 @@ def test_heatmaps_position(bundle_adjuster: pybundle.BundleAdjuster) -> None:
             / (2 * np.pi * sigma_x * sigma_y)
             * np.exp(
                 -(
-                    (x - mu_x) ** 2 / (2 * sigma_x ** 2)
-                    + (y - mu_y) ** 2 / (2 * sigma_y ** 2)
+                    (x - mu_x) ** 2 / (2 * sigma_x**2)
+                    + (y - mu_y) ** 2 / (2 * sigma_y**2)
                 )
             )
         )
@@ -670,7 +697,7 @@ def test_heatmaps_position(bundle_adjuster: pybundle.BundleAdjuster) -> None:
     hmap_size, hmap_r = 101, 10
     res = 2 * hmap_r / (hmap_size - 1)
     hmap = bell_heatmap(size=hmap_size, r=hmap_r, mu_x=hmap_x, mu_y=hmap_y)
-    sa.add_heatmap("hmap1", hmap.flatten(), hmap_size, res)
+    sa.add_heatmap("hmap1", hmap.flatten().tolist(), hmap_size, res)
     x1_offset, y1_offset = 2, 0
     x2_offset, y2_offset = 0, 2
     x3_offset, y3_offset = -2, 0

@@ -1,18 +1,25 @@
+# pyre-strict
 import argparse
 from os.path import join
+from types import ModuleType
+from typing import Any, List
+
+import pytest
 
 from opensfm import commands, dataset
 from opensfm.test import data_generation, utils
 
 
-def run_command(command, args) -> None:
+def run_command(command: ModuleType, args: List[str]) -> None:
     parser = argparse.ArgumentParser()
     command.add_arguments(parser)
     parsed_args = parser.parse_args(args)
     command.run(dataset.DataSet(parsed_args.dataset), parsed_args)
 
 
-def test_run_all(tmpdir) -> None:
+# If that one is too slow : uncomment
+# @pytest.mark.slow
+def test_run_all(tmpdir: Any) -> None:
     data = data_generation.create_berlin_test_folder(tmpdir)
     run_all_commands = [
         commands.extract_metadata,
@@ -24,7 +31,10 @@ def test_run_all(tmpdir) -> None:
         commands.reconstruct_from_prior,
         commands.mesh,
         commands.undistort,
+        commands.dense_clustering,
         commands.compute_depthmaps,
+        commands.fuse_depthmaps,
+        commands.dense_merging,
         commands.export_ply,
         commands.export_visualsfm,
         commands.export_openmvs,

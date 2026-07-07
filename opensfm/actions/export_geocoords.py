@@ -1,13 +1,14 @@
+# pyre-strict
 import logging
 import os
-from opensfm import types
+from typing import List, Sequence
 
 import numpy as np
-import pyproj
-from opensfm import io
+from pyproj import Proj, CRS
+from numpy.typing import NDArray
+from opensfm import io, types
+from opensfm import geo
 from opensfm.dataset import DataSet, UndistortedDataSet
-from opensfm.geo import TopocentricConverter
-from typing import List, Sequence
 
 logger: logging.Logger = logging.getLogger(__name__)
 
@@ -18,7 +19,7 @@ def run_dataset(
     transformation: bool,
     image_positions: bool,
     reconstruction: bool,
-    dense : bool,
+    dense: bool,
     output: str,
     offset = (0, 0)
 ) -> None:
@@ -41,8 +42,8 @@ def run_dataset(
 
     reference = data.load_reference()
 
-    projection = pyproj.Proj(proj)
-    t = _get_transformation(reference, projection, offset)
+    projection = Proj.from_crs(CRS.from_epsg(4979), CRS.from_proj4(proj), always_xy=True).transform
+    t = geo.get_proj_transform_matrix(reference, projection, offset)
 
     if transformation:
         output = output or "geocoords_transformation.txt"
@@ -69,53 +70,12 @@ def run_dataset(
         _transform_dense_point_cloud(udata, t, output_path)
 
 
-def _get_transformation(reference: TopocentricConverter, projection: pyproj.Proj, offset) -> np.ndarray:
-    """Get the linear transform from reconstruction coords to geocoords."""
-    p = [[1, 0, 0], [0, 1, 0], [0, 0, 1], [0, 0, 0]]
-    q = [_transform(point, reference, projection) for point in p]
-
-    transformation = np.array(
-        [
-            [q[0][0] - q[3][0], q[1][0] - q[3][0], q[2][0] - q[3][0], q[3][0] - offset[0]],
-            [q[0][1] - q[3][1], q[1][1] - q[3][1], q[2][1] - q[3][1], q[3][1] - offset[1]],
-            [q[0][2] - q[3][2], q[1][2] - q[3][2], q[2][2] - q[3][2], q[3][2]],
-            [0, 0, 0, 1],
-        ]
-    )
-    return transformation
-
-
-def _write_transformation(transformation: np.ndarray, filename: str) -> None:
+def _write_transformation(transformation: NDArray, filename: str) -> None:
     """Write the 4x4 matrix transformation to a text file."""
     with io.open_wt(filename) as fout:
         for row in transformation:
-            fout.write(u" ".join(map(str, row)))
-            fout.write(u"\n")
-
-
-def _transform(point: Sequence, reference: TopocentricConverter, projection: pyproj.Proj) -> List[float]:
-    """Transform on point from local coords to a proj4 projection."""
-    lat, lon, altitude = reference.to_lla(point[0], point[1], point[2])
-    easting, northing = projection(lon, lat)
-    return [easting, northing, altitude]
-
-
-def _transform_image_positions(
-    reconstructions: List[types.Reconstruction], transformation: np.ndarray, output: str
-) -> None:
-    A, b = transformation[:3, :3], transformation[:3, 3]
-
-    rows = ["Image\tX\tY\tZ"]
-    for r in reconstructions:
-        for shot in r.shots.values():
-            o = shot.pose.get_origin()
-            to = np.dot(A, o) + b
-            row = [shot.id, to[0], to[1], to[2]]
-            rows.append("\t".join(map(str, row)))
-
-    text = "\n".join(rows + [""])
-    with open(output, "w") as fout:
-        fout.write(text)
+            fout.write(" ".join(map(str, row)))
+            fout.write("\n")
 
 
 def _transform_reconstruction(
@@ -134,8 +94,26 @@ def _transform_reconstruction(
         point.coordinates = list(np.dot(A, point.coordinates) + b)
 
 
+def _transform_image_positions(
+    reconstructions: List[types.Reconstruction], transformation: NDArray, output: str
+) -> None:
+    A, b = transformation[:3, :3], transformation[:3, 3]
+
+    rows = ["Image\tX\tY\tZ"]
+    for r in reconstructions:
+        for shot in r.shots.values():
+            o = shot.pose.get_origin()
+            to = np.dot(A, o) + b
+            row = [shot.id, to[0], to[1], to[2]]
+            rows.append("\t".join(map(str, row)))
+
+    text = "\n".join(rows + [""])
+    with open(output, "w") as fout:
+        fout.write(text)
+
+
 def _transform_dense_point_cloud(
-    udata: UndistortedDataSet, transformation: np.ndarray, output_path: str
+    udata: UndistortedDataSet, transformation: NDArray, output_path: str
 ) -> None:
     """Apply a transformation to the merged point cloud."""
     A, b = transformation[:3, :3], transformation[:3, 3]
@@ -147,7 +125,9 @@ def _transform_dense_point_cloud(
                     fout.write(line)
                 else:
                     x, y, z, nx, ny, nz, red, green, blue = line.split()
+                    # pyre-fixme[6]: For 2nd argument expected `Union[Sequence[Sequen...
                     x, y, z = np.dot(A, map(float, [x, y, z])) + b
+                    # pyre-fixme[6]: For 2nd argument expected `Union[Sequence[Sequen...
                     nx, ny, nz = np.dot(A, map(float, [nx, ny, nz]))
                     fout.write(
                         "{} {} {} {} {} {} {} {} {}\n".format(

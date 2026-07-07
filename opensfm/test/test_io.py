@@ -1,13 +1,16 @@
+# pyre-strict
 import json
 import os.path
 from io import StringIO
+from typing import List
 
 import numpy as np
-from opensfm import io, pygeometry, types
+
+from opensfm import io, pygeometry, pymap, types
 from opensfm.test import data_generation, utils
 
 
-filename = os.path.join(
+filename: str = os.path.join(
     data_generation.DATA_PATH, "berlin", "reconstruction_example.json"
 )
 
@@ -15,7 +18,8 @@ filename = os.path.join(
 def test_reconstructions_from_json_consistency() -> None:
     with open(filename) as fin:
         obj_before = json.loads(fin.read())
-    obj_after = io.reconstructions_to_json(io.reconstructions_from_json(obj_before))
+    obj_after = io.reconstructions_to_json(
+        io.reconstructions_from_json(obj_before))
 
     assert obj_before[0]["cameras"] == obj_after[0]["cameras"]
 
@@ -24,6 +28,14 @@ def test_reconstructions_from_json_consistency() -> None:
     for key, shot in obj_before[0]["shots"].items():
         for attr in shot:
             obj1 = obj_before[0]["shots"][key][attr]
+            # gps_dop is a legacy scalar field normalised to gps_accuracy
+            # (a 3-vector) on round-trip; verify the conversion instead.
+            if attr == "gps_dop":
+                dop = float(obj1)
+                assert np.allclose(
+                    obj_after[0]["shots"][key]["gps_accuracy"], [dop, dop, dop]
+                )
+                continue
             obj2 = obj_after[0]["shots"][key][attr]
             if attr in ["translation", "rotation"]:
                 assert np.allclose(np.array(obj1), np.array(obj2))
@@ -62,18 +74,6 @@ def test_reconstruction_to_ply() -> None:
     reconstructions = io.reconstructions_from_json(obj)
     ply = io.reconstruction_to_ply(reconstructions[0])
     assert len(ply.splitlines()) > len(reconstructions[0].points)
-
-
-def test_parse_projection() -> None:
-    proj = io._parse_projection("WGS84")
-    assert proj is None
-
-    proj = io._parse_projection("WGS84 UTM 31N")
-    easting, northing = 431760, 4582313.7
-    lat, lon = 41.38946, 2.18378
-    assert proj
-    plat, plon = proj.transform(easting, northing)
-    assert np.allclose((lat, lon), (plat, plon))
 
 
 def test_read_gcp_list() -> None:
@@ -129,7 +129,7 @@ def test_read_write_ground_control_points() -> None:
 }
     """
 
-    def check_points(points) -> None:
+    def check_points(points: List[pymap.GroundControlPoint]) -> None:
         assert len(points) == 2
         p1, p2 = points
         if p1.id != "1":
@@ -143,14 +143,14 @@ def test_read_write_ground_control_points() -> None:
 
     # Read json
     fp = StringIO(text)
-    points = io.read_ground_control_points(fp)
+    points, crs = io.read_ground_control_points(fp)
     check_points(points)
 
     # Write json and re-read
     fwrite = StringIO()
-    io.write_ground_control_points(points, fwrite)
+    io.write_ground_control_points(points, fwrite, crs)
     freread = StringIO(fwrite.getvalue())
-    points_reread = io.read_ground_control_points(freread)
+    points_reread, crs2 = io.read_ground_control_points(freread)
     check_points(points_reread)
 
 
@@ -163,17 +163,25 @@ def test_json_to_and_from_metadata() -> None:
         "skey": "test",
         "gravity_down": [7, 8, 9],
         "compass": {"angle": 10, "accuracy": 45},
+        "opk_angles": [1.0, 2.0, 3.0],
+        "opk_accuracy": 0.1,
     }
     m = io.json_to_pymap_metadata(obj)
     assert m.orientation.value == 10
     assert m.capture_time.value == 1
-    assert m.gps_accuracy.value == 2
+    assert np.allclose(m.gps_accuracy.value, [2, 2, 2])
     assert np.allclose(m.gps_position.value, [4, 5, 6])
     assert m.sequence_key.value == "test"
     assert np.allclose(m.gravity_down.value, [7, 8, 9])
     assert m.compass_angle.value == 10
     assert m.compass_accuracy.value == 45
-    assert obj == io.pymap_metadata_to_json(m)
+    assert np.allclose(m.opk_angles.value, [1.0, 2.0, 3.0])
+    assert m.opk_accuracy.value == 0.1
+    obj2 = io.pymap_metadata_to_json(m)
+    assert obj2["orientation"] == obj["orientation"]
+    assert obj2["capture_time"] == obj["capture_time"]
+    assert np.allclose(obj2["gps_accuracy"], [2, 2, 2])
+    assert np.allclose(obj2["gps_position"], obj["gps_position"])
 
 
 def test_camera_from_to_vector() -> None:

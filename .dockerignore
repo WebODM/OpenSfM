@@ -3,6 +3,7 @@
 
 # Pick what to include
 !bin
+!configs
 !data/berlin/config.yaml
 !data/berlin/gcp_list.txt
 !data/berlin/images
@@ -11,8 +12,10 @@
 !doc
 !LICENSE
 !opensfm
+!pyproject.toml
+!conda.yml
+!conda-*.lock
 !README.md
-!requirements.txt
 !setup.cfg
 !setup.py
 !viewer

@@ -1,3 +1,4 @@
+# pyre-strict
 import logging
 import os
 
@@ -7,42 +8,53 @@ except ModuleNotFoundError:
     pass  # Windows
 import ctypes
 import sys
-from typing import Optional
+from typing import Callable, List, Optional, TypeVar
 
 import cv2
-from joblib import Parallel, delayed, parallel_backend
-
+from joblib import delayed, Parallel, parallel_backend
 
 logger: logging.Logger = logging.getLogger(__name__)
 
 
-abspath = os.path.dirname(os.path.realpath(__file__))
-SENSOR_DATA = os.path.join(abspath, "data", "sensor_data.json")
+abspath: str = os.path.dirname(os.path.realpath(__file__))
+SENSOR_DATA: str = os.path.join(abspath, "data", "sensor_data.json")
 SENSOR_DATA_DB = os.path.join(abspath, "data", "sensor_data.sqlite")
-CAMERA_CALIBRATION = os.path.join(abspath, "data", "camera_calibration.yaml")
-BOW_PATH = os.path.join(abspath, "data", "bow")
+CAMERA_CALIBRATION: str = os.path.join(
+    abspath, "data", "camera_calibration.yaml")
+BOW_PATH: str = os.path.join(abspath, "data", "bow")
 
 
 # Handle different OpenCV versions
 OPENCV5: bool = int(cv2.__version__.split(".")[0]) >= 5
 OPENCV4: bool = int(cv2.__version__.split(".")[0]) >= 4
 OPENCV44: bool = (
-    int(cv2.__version__.split(".")[0]) == 4 and int(cv2.__version__.split(".")[1]) >= 4
+    int(cv2.__version__.split(".")[0]) == 4 and int(
+        cv2.__version__.split(".")[1]) >= 4
 )
 OPENCV3: bool = int(cv2.__version__.split(".")[0]) >= 3
 
+flann_Index: Optional[cv2.flann_Index] = None
 if hasattr(cv2, "flann_Index"):
     flann_Index = cv2.flann_Index
 elif hasattr(cv2, "flann") and hasattr(cv2.flann, "Index"):
     flann_Index = cv2.flann.Index
 else:
     logger.warning("Unable to find flann Index")
-    flann_Index = None
 
 
 # Parallel processes
-def parallel_map(func, args, num_proc: int, max_batch_size: int = 1, backend="threading"):
-    """Run function for all arguments using multiple processes."""
+T = TypeVar("T")
+R = TypeVar("R")
+
+
+def parallel_map(
+    func: Callable[[T], R],
+    args: List[T],
+    num_proc: int,
+    max_batch_size: int = 1,
+    backend: str = "threading",
+) -> List[R]:
+    """Run function for all arguments using a joblib backend."""
     # De-activate/Restore any inner OpenCV threading
     threads_used = cv2.getNumThreads()
     cv2.setNumThreads(0)
@@ -56,7 +68,8 @@ def parallel_map(func, args, num_proc: int, max_batch_size: int = 1, backend="th
             batch_size = (
                 min(batch_size, max_batch_size) if max_batch_size else batch_size
             )
-            res = Parallel(batch_size=batch_size)(delayed(func)(arg) for arg in args)
+            res = Parallel(batch_size=batch_size)(
+                delayed(func)(arg) for arg in args)
 
     cv2.setNumThreads(threads_used)
     return res
@@ -118,7 +131,65 @@ else:
         return available_mem
 
     def current_memory_usage() -> int:
-        return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * rusage_unit
+        """Log memory usage in MB."""
+        mem_bytes = resource.getrusage(
+            resource.RUSAGE_SELF).ru_maxrss * rusage_unit
+        return float(mem_bytes) / 1024 / 1024
+
+
+try:
+    _PAGE_SIZE: int = resource.getpagesize()
+except (NameError, AttributeError):
+    _PAGE_SIZE = 4096
+
+
+def current_rss_bytes() -> Optional[int]:
+    """Live resident-set size of this process, in bytes (Linux only).
+
+    Unlike ``current_memory_usage`` — which is the high-water peak via
+    ``ru_maxrss`` and never decreases — this is the *current* RSS, so it
+    reflects memory that has been released.  Returns ``None`` where
+    ``/proc`` is unavailable (Windows/macOS).
+    """
+    try:
+        with open("/proc/self/statm") as f:
+            rss_pages = int(f.readline().split()[1])
+        return rss_pages * _PAGE_SIZE
+    except (OSError, ValueError, IndexError):
+        return None
+
+
+_last_log_memory_rss: Optional[int] = None
+
+
+def log_memory(stage: str) -> int:
+    """Log memory usage at a given stage and return the peak RSS in bytes.
+
+    Logs both the live RSS (current footprint, shows whether memory was
+    freed) and the peak RSS high-water mark, plus the delta in live RSS
+    since the previous checkpoint — so per-phase peaks and leaks are
+    visible.  The return value is the peak (``ru_maxrss``) for backward
+    compatibility with callers that record it in stats.
+    """
+    global _last_log_memory_rss
+    peak_bytes = current_memory_usage()
+    peak_gb = peak_bytes / 1024 / 1024 / 1024
+
+    live_bytes = current_rss_bytes()
+    if live_bytes is not None:
+        live_gb = live_bytes / 1024 / 1024 / 1024
+        if _last_log_memory_rss is not None:
+            delta_gb = (live_bytes - _last_log_memory_rss) / 1024 / 1024 / 1024
+            delta = f", Δ{delta_gb:+.2f} GB"
+        else:
+            delta = ""
+        _last_log_memory_rss = live_bytes
+        logger.debug(
+            f"[Memory] {stage}: live {live_gb:.2f} GB, peak {peak_gb:.2f} GB{delta}"
+        )
+    else:
+        logger.debug(f"[Memory] {stage}: peak {peak_gb:.1f} GB")
+    return peak_bytes
 
 
 def processes_that_fit_in_memory(desired: int, per_process: int) -> int:

@@ -4779,7 +4779,7 @@
         "Sensor res. (width)": 6016.0, 
         "Sensor res. (height)": 3376.0
     }, 
-        "DJI ZENMUSEP1": {
+    "DJI ZENMUSEP1": {
         "Sensor height (mm)": 24, 
         "Sensor width (mm)": 35.9, 
         "Sensor res. (width)": 8192.0, 

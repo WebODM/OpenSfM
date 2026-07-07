@@ -1,14 +1,15 @@
+# pyre-strict
 import copy
 import sys
 
 import cv2
 import numpy as np
+from numpy.typing import NDArray
 from opensfm import pygeometry, pymap, types
 from scipy.stats import special_ortho_group
 
 
 def test_reconstruction_class_initialization() -> None:
-
     # Instantiate Reconstruction
     reconstruction = types.Reconstruction()
     focal = 0.9722222222222222
@@ -25,23 +26,27 @@ def test_reconstruction_class_initialization() -> None:
     metadata = pymap.ShotMeasurements()
     metadata.orientation.value = 1
     metadata.capture_time.value = 0.0
-    metadata.gps_accuracy.value = 5.0
-    metadata.gps_position.value = np.array([
-        1.0815875281451939,
-        -0.96510451436708888,
-        1.2042133903991235,
-    ])
+    metadata.gps_accuracy.value = np.array([5.0, 5.0, 5.0])
+    metadata.gps_position.value = np.array(
+        [
+            1.0815875281451939,
+            -0.96510451436708888,
+            1.2042133903991235,
+        ]
+    )
     metadata.gravity_down.value = np.array([0.1, 0.9, 0.0])
     metadata.compass_angle.value = 270.0
     metadata.compass_accuracy.value = 15.0
     metadata.sequence_key.value = "a_sequence_key"
 
     # Instantiate shots
-    pose0 = pygeometry.Pose(np.array([0.0, 0.0, 0.0]), np.array([0.0, 0.0, 0.0]))
+    pose0 = pygeometry.Pose(
+        np.array([0.0, 0.0, 0.0]), np.array([0.0, 0.0, 0.0]))
     shot0 = reconstruction.create_shot("0", camera.id, pose0)
     shot0.metadata = metadata
 
-    pose1 = pygeometry.Pose(np.array([0.0, 0.0, 0.0]), np.array([-1.0, 0.0, 0.0]))
+    pose1 = pygeometry.Pose(
+        np.array([0.0, 0.0, 0.0]), np.array([-1.0, 0.0, 0.0]))
     shot1 = reconstruction.create_shot("1", camera.id, pose1)
     shot1.metadata = metadata
 
@@ -80,7 +85,7 @@ def test_shot_measurement() -> None:
     assert m.value == 4
 
 
-def _helper_pose_equal_to_T(pose, T_cw) -> None:
+def _helper_pose_equal_to_T(pose: pygeometry.Pose, T_cw: NDArray) -> None:
     assert np.allclose(pose.get_R_world_to_cam(), T_cw[0:3, 0:3])
     assert np.allclose(pose.get_t_world_to_cam(), T_cw[0:3, 3].reshape(3))
     assert np.allclose(pose.translation, T_cw[0:3, 3].reshape(3))
@@ -97,17 +102,21 @@ def _helper_pose_equal_to_T(pose, T_cw) -> None:
     assert np.allclose(pose.get_Rt(), T_cw[0:3, 0:4])
 
 
-def _helper_poses_equal_py_cpp(py_pose, cpp_pose) -> None:
+def _helper_poses_equal_py_cpp(
+    py_pose: pygeometry.Pose, cpp_pose: pygeometry.Pose
+) -> None:
     assert np.allclose(py_pose.translation, cpp_pose.translation)
     assert np.allclose(py_pose.rotation, cpp_pose.rotation)
-    assert np.allclose(py_pose.get_rotation_matrix(), cpp_pose.get_rotation_matrix())
+    assert np.allclose(py_pose.get_rotation_matrix(),
+                       cpp_pose.get_rotation_matrix())
     assert np.allclose(py_pose.get_origin(), cpp_pose.get_origin())
 
 
-def _heper_poses_equal(pose1, pose2) -> None:
+def _heper_poses_equal(pose1: pygeometry.Pose, pose2: pygeometry.Pose) -> None:
     assert np.allclose(pose1.translation, pose2.translation)
     assert np.allclose(pose1.rotation, pose2.rotation)
-    assert np.allclose(pose1.get_rotation_matrix(), pose2.get_rotation_matrix())
+    assert np.allclose(pose1.get_rotation_matrix(),
+                       pose2.get_rotation_matrix())
     assert np.allclose(pose1.get_origin(), pose2.get_origin())
     assert np.allclose(pose1.get_R_cam_to_world(), pose2.get_R_cam_to_world())
     assert np.allclose(pose1.get_R_world_to_cam(), pose2.get_R_world_to_cam())
@@ -237,7 +246,8 @@ def test_pixel_to_normalized_conversion() -> None:
     norm_coord_static = pygeometry.Camera.pixel_to_normalized_coordinates_common(
         px_coord, width, height
     )
-    norm_coord_gt = px_coord - np.array([(width - 1.0) / 2.0, (height - 1.0) / 2.0])
+    norm_coord_gt = px_coord - \
+        np.array([(width - 1.0) / 2.0, (height - 1.0) / 2.0])
     norm_coord_gt /= max(width, height)
     assert np.allclose(norm_coord_comp, norm_coord_gt)
     assert np.allclose(norm_coord_static, norm_coord_gt)

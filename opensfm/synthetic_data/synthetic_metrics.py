@@ -1,14 +1,17 @@
-from typing import Tuple, List, Dict
+# pyre-strict
+import copy
+from typing import Dict, List, Tuple
 
 import cv2
 import numpy as np
 import opensfm.transformations as tf
-from opensfm import align, types, pymap, multiview
+from numpy.typing import NDArray
+from opensfm import align, geo, multiview, pymap, types
 
 
 def points_errors(
     reference: types.Reconstruction, candidate: types.Reconstruction
-) -> np.ndarray:
+) -> NDArray:
     common_points = set(reference.points.keys()).intersection(
         set(candidate.points.keys())
     )
@@ -30,7 +33,7 @@ def completeness_errors(
     )
 
 
-def gps_errors(candidate: types.Reconstruction) -> np.ndarray:
+def gps_errors(candidate: types.Reconstruction) -> NDArray:
     errors = []
     for shot in candidate.shots.values():
         bias = candidate.biases[shot.camera.id]
@@ -42,25 +45,28 @@ def gps_errors(candidate: types.Reconstruction) -> np.ndarray:
 
 def gcp_errors(
     candidate: types.Reconstruction, gcps: Dict[str, pymap.GroundControlPoint]
-) -> np.ndarray:
+) -> NDArray:
     errors = []
     for gcp in gcps.values():
         if not gcp.lla:
             continue
 
-        triangulated = multiview.triangulate_gcp(gcp, candidate.shots, 1.0, 0.1)
+        triangulated = multiview.triangulate_gcp(
+            gcp, candidate.shots, 1.0, 0.1)
         if triangulated is None:
             continue
 
+        x, _inliers = triangulated
         gcp_enu = candidate.reference.to_topocentric(*gcp.lla_vec)
-        errors.append(triangulated - gcp_enu)
+        errors.append(x - gcp_enu)
     return np.array(errors)
 
 
 def position_errors(
     reference: types.Reconstruction, candidate: types.Reconstruction
-) -> np.ndarray:
-    common_shots = set(reference.shots.keys()).intersection(set(candidate.shots.keys()))
+) -> NDArray:
+    common_shots = set(reference.shots.keys()).intersection(
+        set(candidate.shots.keys()))
     errors = []
     for s in common_shots:
         pose1 = reference.shots[s].pose.get_origin()
@@ -71,8 +77,9 @@ def position_errors(
 
 def rotation_errors(
     reference: types.Reconstruction, candidate: types.Reconstruction
-) -> np.ndarray:
-    common_shots = set(reference.shots.keys()).intersection(set(candidate.shots.keys()))
+) -> NDArray:
+    common_shots = set(reference.shots.keys()).intersection(
+        set(candidate.shots.keys()))
     errors = []
     for s in common_shots:
         pose1 = reference.shots[s].pose.get_rotation_matrix()
@@ -85,8 +92,8 @@ def rotation_errors(
 
 
 def find_alignment(
-    points0: List[np.ndarray], points1: List[np.ndarray]
-) -> Tuple[float, np.ndarray, np.ndarray]:
+    points0: List[NDArray], points1: List[NDArray]
+) -> Tuple[float, NDArray, NDArray]:
     """Compute similarity transform between point sets.
 
     Returns (s, A, b) such that ``points1 = s * A * points0 + b``
@@ -124,25 +131,111 @@ def aligned_to_reference(
                 coords2.append(shot2.pose.get_origin())
 
     s, A, b = find_alignment(coords1, coords2)
-    aligned = _copy_reconstruction(reconstruction)
+    aligned = copy.deepcopy(reconstruction)
     align.apply_similarity(aligned, s, A, b)
     return aligned
 
 
-def _copy_reconstruction(reconstruction: types.Reconstruction) -> types.Reconstruction:
-    copy = types.Reconstruction()
-    for camera in reconstruction.cameras.values():
-        copy.add_camera(camera)
-    for shot in reconstruction.shots.values():
-        copy.add_shot(shot)
-    for point in reconstruction.points.values():
-        copy.add_point(point)
-    return copy
+def change_geo_reference(
+    reconstruction: types.Reconstruction,
+    latitude: float,
+    longitude: float,
+    altitude: float,
+) -> types.Reconstruction:
+    """Change the geo reference of a reconstruction.
+
+    This assumes that the new lla is close enough that rotation differences
+    between references can be ignored.
+    """
+    t_old_new = reconstruction.reference.to_topocentric(
+        latitude, longitude, altitude)
+
+    s = 1.0
+    A = np.eye(3)
+    b = -np.array(t_old_new)
+    aligned = copy.deepcopy(reconstruction)
+    aligned.reference = geo.TopocentricConverter(latitude, longitude, altitude)
+    align.apply_similarity(aligned, s, A, b)
+    for shot in aligned.shots.values():
+        if shot.metadata.gps_position.has_value:
+            shot.metadata.gps_position.value = shot.metadata.gps_position.value + b
+    return aligned
 
 
-def rmse(errors: np.ndarray) -> float:
-    return np.sqrt(np.mean(errors ** 2))
+def rig_camera_rotation_errors(
+    reference: types.Reconstruction, candidate: types.Reconstruction
+) -> NDArray:
+    """Per-rig-camera angle-axis rotation error norm."""
+    errors = []
+    for rig_camera_id, ref_rig_camera in reference.rig_cameras.items():
+        if rig_camera_id not in candidate.rig_cameras:
+            continue
+        rec_rig_camera = candidate.rig_cameras[rig_camera_id]
+        errors.append(
+            np.linalg.norm(
+                ref_rig_camera.pose.rotation - rec_rig_camera.pose.rotation
+            )
+        )
+    return np.array(errors)
 
 
-def mad(errors: np.ndarray) -> float:
+def rig_camera_translation_errors(
+    reference: types.Reconstruction, candidate: types.Reconstruction
+) -> NDArray:
+    """Per-rig-camera translation error norm."""
+    errors = []
+    for rig_camera_id, ref_rig_camera in reference.rig_cameras.items():
+        if rig_camera_id not in candidate.rig_cameras:
+            continue
+        rec_rig_camera = candidate.rig_cameras[rig_camera_id]
+        errors.append(
+            np.linalg.norm(
+                ref_rig_camera.pose.translation - rec_rig_camera.pose.translation
+            )
+        )
+    return np.array(errors)
+
+
+def rig_shot_assignment_errors(
+    reference: types.Reconstruction, candidate: types.Reconstruction
+) -> NDArray:
+    """Binary array (1 correct, 0 wrong) for each common shot's rig assignment."""
+    errors = []
+    for shot_id, ref_shot in reference.shots.items():
+        if shot_id not in candidate.shots:
+            continue
+        rec_shot = candidate.shots[shot_id]
+        correct = (
+            rec_shot.rig_camera_id == ref_shot.rig_camera_id
+            and rec_shot.rig_instance_id == ref_shot.rig_instance_id
+        )
+        errors.append(1.0 if correct else 0.0)
+    return np.array(errors)
+
+
+def rig_instance_assignment_errors(
+    reference: types.Reconstruction, candidate: types.Reconstruction
+) -> NDArray:
+    """Binary array (1 correct, 0 wrong) for each reference rig instance."""
+    errors = []
+    for instance_id, ref_instance in reference.rig_instances.items():
+        if instance_id not in candidate.rig_instances:
+            errors.append(0.0)
+            continue
+        rec_instance = candidate.rig_instances[instance_id]
+        correct = set(rec_instance.rig_camera_ids.keys()) == set(
+            ref_instance.rig_camera_ids.keys()
+        ) and all(
+            rec_instance.rig_camera_ids[s] == ref_instance.rig_camera_ids[s]
+            for s in ref_instance.rig_camera_ids
+        )
+        errors.append(1.0 if correct else 0.0)
+    return np.array(errors)
+
+
+def rmse(errors: NDArray) -> float:
+    return np.sqrt(np.mean(errors**2))
+
+
+def mad(errors: NDArray) -> float:
     return np.median(np.absolute(errors - np.median(errors)))

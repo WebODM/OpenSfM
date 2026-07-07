@@ -1,12 +1,15 @@
+# pyre-strict
 import functools
 import math
-from typing import Dict, Optional, List, Any, Union, Tuple, Callable
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import opensfm.synthetic_data.synthetic_dataset as sd
 import opensfm.synthetic_data.synthetic_generator as sg
 import opensfm.synthetic_data.synthetic_metrics as sm
-from opensfm import pygeometry, types, pymap, geo
+from numpy.typing import NDArray
+from opensfm import geo, pygeometry, pymap, types
+from opensfm.reconstruction_helpers import exif_to_metadata
 
 
 def get_camera(
@@ -29,7 +32,9 @@ def get_camera(
     return camera
 
 
-def get_scene_generator(type: str, length: float, **kwargs) -> functools.partial:
+def get_scene_generator(
+    type: str, length: float, **kwargs: Any
+) -> Callable[[float], NDArray]:
     generator = None
     if type == "circle":
         generator = functools.partial(sg.ellipse_generator, length, length)
@@ -49,9 +54,7 @@ def get_scene_generator(type: str, length: float, **kwargs) -> functools.partial
     return generator
 
 
-def camera_pose(
-    position: np.ndarray, lookat: np.ndarray, up: np.ndarray
-) -> pygeometry.Pose:
+def camera_pose(position: NDArray, lookat: NDArray, up: NDArray) -> pygeometry.Pose:
     """
     Pose from position and look at direction
 
@@ -63,7 +66,7 @@ def camera_pose(
     True
     """
 
-    def normalized(x: np.ndarray) -> np.ndarray:
+    def normalized(x: NDArray) -> NDArray:
         return x / np.linalg.norm(x)
 
     ez = normalized(np.array(lookat) - np.array(position))
@@ -75,7 +78,7 @@ def camera_pose(
     return pose
 
 
-class SyntheticScene(object):
+class SyntheticScene:
     def get_reconstruction(self) -> types.Reconstruction:
         raise NotImplementedError()
 
@@ -85,9 +88,10 @@ class SyntheticCubeScene(SyntheticScene):
 
     def __init__(self, num_cameras: int, num_points: int, noise: float) -> None:
         self.reconstruction = types.Reconstruction()
-        self.cameras = {}
+        self.cameras: Dict[str, pygeometry.Camera] = {}
         for i in range(num_cameras):
-            camera = camera = pygeometry.Camera.create_perspective(0.9, -0.1, 0.01)
+            camera = camera = pygeometry.Camera.create_perspective(
+                0.9, -0.1, 0.01)
             camera.id = "camera%04d" % i
             camera.height = 600
             camera.width = 800
@@ -145,30 +149,30 @@ class SyntheticStreetScene(SyntheticScene):
     the shape.
     """
 
-    generator: Optional[Callable]
-    wall_points: Optional[np.ndarray]
-    floor_points: Optional[np.ndarray]
+    generator: Optional[Callable[[float], NDArray]]
+    wall_points: Optional[NDArray]
+    floor_points: Optional[NDArray]
     shot_ids: List[List[str]]
     cameras: List[List[pygeometry.Camera]]
-    instances_positions: List[np.ndarray]
-    instances_rotations: List[np.ndarray]
+    instances_positions: List[NDArray]
+    instances_rotations: List[NDArray]
     rig_instances: List[List[List[Tuple[str, str]]]]
     rig_cameras: List[List[pymap.RigCamera]]
     width: float
 
     def __init__(
         self,
-        generator: Optional[Callable],
+        generator: Optional[Callable[[float], NDArray]],
         reference: Optional[geo.TopocentricConverter] = None,
     ) -> None:
         self.generator = generator
         self.reference = reference
-        self.wall_points = None
-        self.floor_points = None
+        self.wall_points: Optional[NDArray] = None
+        self.floor_points: Optional[NDArray] = None
         self.shot_ids = []
         self.cameras = []
-        self.instances_positions = []
-        self.instances_rotations = []
+        self.instances_positions: List[NDArray] = []
+        self.instances_rotations: List[NDArray] = []
         self.rig_instances = []
         self.rig_cameras = []
         self.width = 0.0
@@ -176,9 +180,11 @@ class SyntheticStreetScene(SyntheticScene):
     def combine(self, other_scene: "SyntheticStreetScene") -> "SyntheticStreetScene":
         combined_scene = SyntheticStreetScene(None)
         combined_scene.wall_points = np.concatenate(
+            # pyre-fixme[6]: For 1st argument expected `Union[_SupportsArray[dtype[ty...
             (self.wall_points, other_scene.wall_points)
         )
         combined_scene.floor_points = np.concatenate(
+            # pyre-fixme[6]: For 1st argument expected `Union[_SupportsArray[dtype[ty...
             (self.floor_points, other_scene.floor_points)
         )
         combined_scene.cameras = self.cameras + other_scene.cameras
@@ -195,7 +201,7 @@ class SyntheticStreetScene(SyntheticScene):
         shift = 0
         for subshots in combined_scene.shot_ids:
             for i in range(len(subshots)):
-                subshots[i] = f"Shot {i+shift:04d}"
+                subshots[i] = f"Shot {i + shift:04d}"
             shift += len(subshots)
         return combined_scene
 
@@ -238,19 +244,17 @@ class SyntheticStreetScene(SyntheticScene):
         wall_points, floor_points = self.wall_points, self.floor_points
         assert wall_points is not None and floor_points is not None
         wall_points[:, 2] += height * np.exp(
-            -0.5 * np.linalg.norm(wall_points[:, :2], axis=1) ** 2 / radius ** 2
+            -0.5 * np.linalg.norm(wall_points[:, :2], axis=1) ** 2 / radius**2
         )
         floor_points[:, 2] += height * np.exp(
-            -0.5 * np.linalg.norm(floor_points[:, :2], axis=1) ** 2 / radius ** 2
+            -0.5 * np.linalg.norm(floor_points[:, :2], axis=1) ** 2 / radius**2
         )
 
         for positions in self.instances_positions:
             for position in positions:
                 position[2] += height * np.exp(
                     -0.5
-                    * np.linalg.norm(
-                        (position[0] ** 2 + position[1] ** 2) / radius ** 2
-                    )
+                    * np.linalg.norm((position[0] ** 2 + position[1] ** 2) / radius**2)
                 )
 
     def _set_terrain_hill_repeated(self, height: float, radius: float) -> None:
@@ -296,8 +300,9 @@ class SyntheticStreetScene(SyntheticScene):
         if positions_shift:
             positions += np.array(positions_shift)
 
-        shift = 0 if len(self.shot_ids) == 0 else sum(len(s) for s in self.shot_ids)
-        new_shot_ids = [f"Shot {shift+i:04d}" for i in range(len(positions))]
+        shift = 0 if len(self.shot_ids) == 0 else sum(len(s)
+                                                      for s in self.shot_ids)
+        new_shot_ids = [f"Shot {shift + i:04d}" for i in range(len(positions))]
         self.shot_ids.append(new_shot_ids)
         self.cameras.append([camera])
 
@@ -344,7 +349,9 @@ class SyntheticStreetScene(SyntheticScene):
         for j, (rig_camera_p, rig_camera_r) in enumerate(
             zip(relative_positions, relative_rotations)
         ):
+            # pyre-fixme[6]: For 1st argument expected `ndarray` but got `List[float]`.
             pose_rig_camera = pygeometry.Pose(rig_camera_r)
+            # pyre-fixme[6]: For 1st argument expected `ndarray` but got `List[float]`.
             pose_rig_camera.set_origin(rig_camera_p)
 
             rotations = []
@@ -359,7 +366,7 @@ class SyntheticStreetScene(SyntheticScene):
             camera_shot_ids = []
             for i in range(len(positions)):
                 shot_index = i * len(relative_positions) + j
-                camera_shot_ids.append(f"Shot {shift+shot_index:04d}")
+                camera_shot_ids.append(f"Shot {shift + shot_index:04d}")
             shots_ids_per_camera.append(camera_shot_ids)
         self.cameras.append(cameras)
         self.shot_ids += shots_ids_per_camera
@@ -370,7 +377,9 @@ class SyntheticStreetScene(SyntheticScene):
         for i, (rig_camera_p, rig_camera_r) in enumerate(
             zip(relative_positions, relative_rotations)
         ):
+            # pyre-fixme[6]: For 1st argument expected `ndarray` but got `List[float]`.
             pose_rig_camera = pygeometry.Pose(rig_camera_r)
+            # pyre-fixme[6]: For 1st argument expected `ndarray` but got `List[float]`.
             pose_rig_camera.set_origin(rig_camera_p)
             rig_camera_id = f"RigCamera {rig_camera_id_shift + i}"
             rig_camera = pymap.RigCamera(pose_rig_camera, rig_camera_id)
@@ -382,7 +391,8 @@ class SyntheticStreetScene(SyntheticScene):
         for i in range(len(instances_positions)):
             instance = []
             for j in range(len(shots_ids_per_camera)):
-                instance.append((shots_ids_per_camera[j][i], rig_camera_ids[j]))
+                instance.append(
+                    (shots_ids_per_camera[j][i], rig_camera_ids[j]))
             rig_instances.append(instance)
         self.rig_instances.append(rig_instances)
         self.instances_positions.append(instances_positions)
@@ -395,7 +405,12 @@ class SyntheticStreetScene(SyntheticScene):
         wall_color = [10, 90, 130]
 
         return sg.create_reconstruction(
-            points=np.asarray([self.floor_points, self.wall_points]),
+            # pyre-fixme[6]: For 1st argument expected `List[ndarray[typing.Any,
+            #  typing.Any]]` but got `ndarray[typing.Any, dtype[typing.Any]]`.
+            points=np.asarray(
+                [self.floor_points, self.wall_points], dtype=object),
+            # pyre-fixme[6]: For 2nd argument expected `List[ndarray[typing.Any,
+            #  typing.Any]]` but got `ndarray[typing.Any, dtype[typing.Any]]`.
             colors=np.asarray([floor_color, wall_color]),
             cameras=self.cameras,
             shot_ids=self.shot_ids,
@@ -430,7 +445,7 @@ class SyntheticInputData:
         gcp_noise: Tuple[float, float],
         causal_gps_noise: bool,
         gcps_count: Optional[int] = None,
-        gcps_shift: Optional[np.ndarray] = None,
+        gcps_shift: Optional[NDArray] = None,
         on_disk_features_filename: Optional[str] = None,
         generate_projections: bool = True,
     ) -> None:
@@ -442,6 +457,11 @@ class SyntheticInputData:
             imu_noise,
             causal_gps_noise=causal_gps_noise,
         )
+
+        for shot in self.reconstruction.shots.values():
+            shot.metadata = exif_to_metadata(
+                self.exifs[shot.id], False, self.reconstruction.reference
+            )
 
         if generate_projections:
             (self.features, self.tracks_manager, self.gcps) = sg.generate_track_data(
@@ -464,19 +484,31 @@ def compare(
     reconstruction: types.Reconstruction,
 ) -> Dict[str, float]:
     """Compare a reconstruction with reference groundtruth."""
+    geo = reference.reference
+
     completeness = sm.completeness_errors(reference, reconstruction)
 
-    absolute_position = sm.position_errors(reference, reconstruction)
-    absolute_rotation = sm.rotation_errors(reference, reconstruction)
-    absolute_points = sm.points_errors(reference, reconstruction)
-    absolute_gps = sm.gps_errors(reconstruction)
-    absolute_gcp = sm.gcp_errors(reconstruction, gcps)
+    geo_referenced = sm.change_geo_reference(
+        reconstruction, geo.lat, geo.lon, geo.alt)
+    absolute_position = sm.position_errors(reference, geo_referenced)
+    absolute_rotation = sm.rotation_errors(reference, geo_referenced)
+    absolute_points = sm.points_errors(reference, geo_referenced)
+    absolute_gps = sm.gps_errors(geo_referenced)
+    absolute_gcp = sm.gcp_errors(geo_referenced, gcps)
 
-    aligned = sm.aligned_to_reference(reference, reconstruction)
+    aligned = sm.aligned_to_reference(reference, geo_referenced)
     aligned_position = sm.position_errors(reference, aligned)
     aligned_rotation = sm.rotation_errors(reference, aligned)
     aligned_points = sm.points_errors(reference, aligned)
     aligned_gps = sm.gps_errors(aligned)
+
+    rig_cam_rotation = sm.rig_camera_rotation_errors(reference, geo_referenced)
+    rig_cam_translation = sm.rig_camera_translation_errors(
+        reference, geo_referenced)
+    rig_shot_assignment = sm.rig_shot_assignment_errors(
+        reference, geo_referenced)
+    rig_instance_assignment = sm.rig_instance_assignment_errors(
+        reference, geo_referenced)
 
     return {
         "ratio_cameras": completeness[0],
@@ -503,4 +535,16 @@ def compare(
         "aligned_gps_mad": sm.mad(aligned_gps),
         "aligned_points_rmse": sm.rmse(aligned_points),
         "aligned_points_mad": sm.mad(aligned_points),
+        "rig_camera_rotation_rmse": sm.rmse(rig_cam_rotation)
+        if len(rig_cam_rotation) > 0
+        else 0.0,
+        "rig_camera_translation_rmse": sm.rmse(rig_cam_translation)
+        if len(rig_cam_translation) > 0
+        else 0.0,
+        "rig_shot_assignment_ratio": float(np.mean(rig_shot_assignment))
+        if len(rig_shot_assignment) > 0
+        else 1.0,
+        "rig_instance_assignment_ratio": float(np.mean(rig_instance_assignment))
+        if len(rig_instance_assignment) > 0
+        else 1.0,
     }

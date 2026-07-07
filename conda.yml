@@ -1,0 +1,24 @@
+name: opensfm
+dependencies:
+    - python=3.10
+    - pip
+    - cmake=3.31
+    - ninja
+    - make
+    - libxcrypt # [linux] [osx]
+    - libopencv<5.0 *=headless*
+    - py-opencv<5.0
+    - anaconda::metis
+    - conda-forge::suitesparse=7.10.*
+    - conda-forge::llvm-openmp
+    - conda-forge::cxx-compiler
+    - conda-forge::openblas
+    - conda-forge::gperftools # [linux]
+    - conda-forge::ceres-solver=2.2
+    - conda-forge::fast_float
+    - conda-forge::gdal
+    - conda-forge::laszip
+    - conda-forge::libvorbis # [osx]
+    - conda-forge::ocl-icd # [linux]
+    - conda-forge::opencl-headers
+    - conda-forge::khronos-opencl-icd-loader # [win]

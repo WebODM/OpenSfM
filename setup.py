@@ -86,12 +86,15 @@ setuptools.setup(
             "pysfm.*",
             "pyfoundation.*",
             "pymap.*",
+            "configs/aerial.json",
+            "configs/terrestrial.yaml",
             "data/sensor_data.json",
             "data/camera_calibration.yaml",
             "data/bow/bow_hahog_root_uchar_10000.npz",
             "data/bow/bow_hahog_root_uchar_64.npz",
         ]
     },
-
-    cmdclass={'bdist_wheel': platform_bdist_wheel},
+    cmdclass={
+        "bdist_wheel": platform_bdist_wheel,
+    },
 )
