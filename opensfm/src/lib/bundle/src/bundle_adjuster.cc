@@ -686,6 +686,12 @@ void BundleAdjuster::Run() {
         auto* problem = solver.GetProblem();  
         ceres::SubsetManifold *subset_manifold = new ceres::SubsetManifold(data.size(), { 6 });
           problem->SetManifold(data.data(), subset_manifold);
+
+          // Bound principal point (Cx, Cy) parameters to [-0.01, 0.01]
+          problem->SetParameterLowerBound(data.data(), 7, -0.01);
+          problem->SetParameterLowerBound(data.data(), 8, -0.01);
+          problem->SetParameterUpperBound(data.data(), 7, 0.01);
+          problem->SetParameterUpperBound(data.data(), 8, 0.01);
       }
     }
 
