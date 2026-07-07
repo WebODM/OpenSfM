@@ -612,8 +612,11 @@ def extract_features(
     )
 
     assert image.ndim == 2 or image.ndim == 3 and image.shape[2] in [1, 3]
-    assert image.shape[0] > 2 and image.shape[1] > 2
-    assert np.issubdtype(image.dtype, np.uint8)
+    # assert image.shape[0] > 2 and image.shape[1] > 2
+    # assert np.issubdtype(image.dtype, np.uint8)
+
+    if len(image) == 0:
+        return np.array(np.zeros((0, 3))), np.array(np.zeros((0, 3))), np.array(np.zeros((0, 3)))
 
     image = resized_image(image, extraction_size)
     if image.ndim == 2:  # convert (h, w) to (h, w, 1)

@@ -192,20 +192,24 @@ def read_images(
     for image in images:
         logger.debug(
             f"Reading data for image {image} (queue-size={queue.qsize()})")
-        image_array = data.load_image(image)
-        if data.config["features_bake_segmentation"]:
-            segmentation_array = data.load_segmentation(image)
-            instances_array = data.load_instances(image)
-        else:
-            segmentation_array, instances_array = None, None
-        args = (image, image_array, segmentation_array,
-                instances_array, data, force)
-
-        queue.put(args, block=True, timeout=full_queue_timeout)
-        counter.increment()
-        if counter.value() == expected:
-            logger.debug("Finished reading images")
-            queue.put(None)
+        try:
+            image_array = data.load_image(image)
+            if data.config["features_bake_segmentation"]:
+                segmentation_array = data.load_segmentation(image)
+                instances_array = data.load_instances(image)
+            else:
+                segmentation_array, instances_array = None, None
+            args = (image, image_array, segmentation_array,
+                    instances_array, data, force)
+        except IOError as e:
+            logger.warning(f"Corrupted image {image}: {str(e)}")
+            args = image, np.array(np.zeros((0, 0, 3))), None, None, data, force
+        finally:
+            queue.put(args, block=True, timeout=full_queue_timeout)
+            counter.increment()
+            if counter.value() == expected:
+                logger.info("Finished reading images")
+                queue.put(None)
 
 
 def run_detection(queue: ProcessQueue) -> None:
