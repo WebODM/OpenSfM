@@ -27,7 +27,7 @@ target_link_libraries(geometry
     foundation
     ${CERES_LIBRARIES}
     )
-target_include_directories(geometry PUBLIC ${opensfm_SOURCE_DIR})
+target_include_directories(geometry PUBLIC ${opensfm_SOURCE_DIR} ${CERES_INCLUDE_DIR}/ceres/internal/miniglog)
 
 if (OPENSFM_BUILD_TESTS)
     set(GEOMETRY_TEST_FILES
