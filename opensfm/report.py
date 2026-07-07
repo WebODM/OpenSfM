@@ -372,6 +372,8 @@ class Report:
         column_names = ["ID", f"Error X ({self.unit_label})", f"Error Y ({self.unit_label})", f"Error Z ({self.unit_label})"]
 
         for gcp in gcp_stats:
+            if gcp['error'] is None:
+                continue
             gcp_id = ''.join(c if ord(c) < 256 else '?' for c in gcp["id"]) # latin-1 only due to fpdf2 requirements
             row = [gcp_id]
             row.append(f"{self._to_unit(gcp['error']['x']):.3f}")
