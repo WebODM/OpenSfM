@@ -399,15 +399,19 @@ class Report:
         # GPS
         table_count = 0
         for error_type in ["gps", "gcp", "3d"]:
+            stats = self.stats[error_type + "_errors"]
+            if error_type == "gcp" and "gcp_only" in stats:
+                stats = stats["gcp_only"]
+            
             rows = []
             columns_names = [error_type.upper(), "Mean", "Standard Deviation", "RMS Error"]
-            if "average_error" not in self.stats[error_type + "_errors"]:
+            if "average_error" not in stats:
                 continue
             for comp in ["x", "y", "z"]:
                 row = [comp.upper() + f" Error ({self.unit_label})"]
-                row.append(f"{self._to_unit(self.stats[error_type + '_errors']['mean'][comp]):.3f}")
-                row.append(f"{self._to_unit(self.stats[error_type +'_errors']['std'][comp]):.3f}")
-                row.append(f"{self._to_unit(self.stats[error_type +'_errors']['error'][comp]):.3f}")
+                row.append(f"{self._to_unit(stats['mean'][comp]):.3f}")
+                row.append(f"{self._to_unit(stats['std'][comp]):.3f}")
+                row.append(f"{self._to_unit(stats['error'][comp]):.3f}")
                 rows.append(row)
 
             rows.append(
@@ -415,7 +419,7 @@ class Report:
                     "Total",
                     "",
                     "",
-                    f"{self._to_unit(self.stats[error_type +'_errors']['average_error']):.3f}",
+                    f"{self._to_unit(stats['average_error']):.3f}",
                 ]
             )
             self._make_table(columns_names, rows, True)
