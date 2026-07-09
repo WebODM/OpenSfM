@@ -1212,7 +1212,7 @@ def generate_binary_cache(
 
     if P is None or t is None:
         logger.info(
-            "Pre-trained projection not found or failed to load. Falling back to runtime training.")
+            "Training projection at runtime")
         n_sample = min(config.get(
             "binary_training_pairs", 100), len(pairs))
         rng = np.random.RandomState(42)
