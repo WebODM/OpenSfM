@@ -418,24 +418,24 @@ def detect_orientation_prior(
     verticals = []
     origins = []
     has_opk = False
-    for shot in reconstruction.shots.values():
-        origins.append(shot.pose.get_origin())
-        if shot.metadata.opk_angles.has_value:
-            has_opk = True
-            opk = shot.metadata.opk_angles.value
-            R_opk = geometry.rotation_from_opk(
-                math.radians(opk[0]), math.radians(
-                    opk[1]), math.radians(opk[2])
-            )
-            R_pose = shot.pose.get_rotation_matrix()
-            # R_opk[:,2] is ENU Up [0,0,1] in camera frame;
-            # R_pose.T brings it from camera frame to reconstruction frame.
-            verticals.append(R_pose.T @ R_opk[:, 2])
+    # for shot in reconstruction.shots.values():
+    #     origins.append(shot.pose.get_origin())
+    #     if shot.metadata.opk_angles.has_value:
+    #         has_opk = True
+    #         opk = shot.metadata.opk_angles.value
+    #         R_opk = geometry.rotation_from_opk(
+    #             math.radians(opk[0]), math.radians(
+    #                 opk[1]), math.radians(opk[2])
+    #         )
+    #         R_pose = shot.pose.get_rotation_matrix()
+    #         # R_opk[:,2] is ENU Up [0,0,1] in camera frame;
+    #         # R_pose.T brings it from camera frame to reconstruction frame.
+    #         verticals.append(R_pose.T @ R_opk[:, 2])
 
-    if has_opk and len(verticals) > 0:
-        plane = fit_plane_from_opk(verticals, origins)
-        if plane is not None:
-            return plane
+    # if has_opk and len(verticals) > 0:
+    #     plane = fit_plane_from_opk(verticals, origins)
+    #     if plane is not None:
+    #         return plane
 
     return estimate_ground_plane(reconstruction, config)
 
