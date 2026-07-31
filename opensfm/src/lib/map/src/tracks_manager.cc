@@ -704,10 +704,11 @@ TracksManager TracksManager::MergeTracksManager(
   return merged;
 }
 
-map::TracksManager InstanciateFromFilenameBinaryV2(std::ifstream& fstream, const std::string &filename) {
-  // Close stream, we'll reopen it in binary mode
-  if (fstream.is_open()) fstream.close();
+static map::TracksManager ReadBinaryTracksFile(const std::string& filename) {
   std::ifstream fs(filename, std::ios_base::binary);
+  if (!fs.is_open()) {
+    throw std::runtime_error("Can't read tracks manager file: " + filename);
+  }
 
   map::TracksManager manager;
 
@@ -719,64 +720,50 @@ map::TracksManager InstanciateFromFilenameBinaryV2(std::ifstream& fstream, const
   TrackLengths tl;
   TrackRecord tr;
 
-  while(!fs.eof()){
-      fs.read(reinterpret_cast<char *>(&tl), sizeof(TrackLengths));
-      fs.read(buffer, tl.imageLen + tl.trackIdLen);
-      std::string image(buffer, tl.imageLen);
-      std::string trackID(buffer + tl.imageLen, tl.trackIdLen);
+  while (fs.read(reinterpret_cast<char*>(&tl), sizeof(TrackLengths))) {
+    const size_t nameLen =
+        static_cast<size_t>(tl.imageLen) + static_cast<size_t>(tl.trackIdLen);
+    if (tl.imageLen == 0 || nameLen > sizeof(buffer) ||
+        !fs.read(buffer, nameLen)) {
+      throw std::runtime_error("Corrupted tracks file: " + filename);
+    }
+    std::string image(buffer, tl.imageLen);
+    std::string trackID(buffer + tl.imageLen, tl.trackIdLen);
 
-      fs.read(reinterpret_cast<char *>(&tr), sizeof(TrackRecord));
-      auto observation = InstanciateObservation(tr.x, tr.y, tr.scale, tr.featureID, tr.r, tr.g, tr.b, -1, -1);
-      manager.AddObservation(image, trackID, observation);
+    if (!fs.read(reinterpret_cast<char*>(&tr), sizeof(TrackRecord))) {
+      throw std::runtime_error("Corrupted tracks file: " + filename);
+    }
+    auto observation = InstanciateObservation(tr.x, tr.y, tr.scale,
+                                              tr.featureID, tr.r, tr.g, tr.b,
+                                              -1, -1);
+    manager.AddObservation(image, trackID, observation);
+  }
+  if (fs.gcount() != 0) {
+    throw std::runtime_error("Corrupted tracks file: " + filename);
   }
 
   return manager;
 }
 
+map::TracksManager InstanciateFromFilenameBinaryV2(std::ifstream& fstream, const std::string &filename) {
+  // Close stream, we'll reopen it in binary mode
+  if (fstream.is_open()) fstream.close();
+  return ReadBinaryTracksFile(filename);
+}
+
 TracksManager TracksManager::InstanciateFromFile(const std::string& filename) {
-  // std::error_code ec;
-  // mio::mmap_source mmap;
-  // mmap.map(filename, ec);
-  // if (ec) {
-  //   throw std::runtime_error("Can't read tracks manager file");
-  // }
-  // const char* data = mmap.data();
-  // const size_t size = mmap.length();
-  // const auto [version, offset] = DetectVersion(data, size);
-  // return ParseTracksBuffer(data + offset, size - offset, version);
-
-  std::ifstream fs(filename, std::ios_base::binary);
-
-  map::TracksManager manager;
-
-  // Skip version line
-  char buffer[131072];
-  std::string version;
-  std::getline(fs, version);
-
-  TrackLengths tl;
-  TrackRecord tr;
-
-  while(!fs.eof()){
-      fs.read(reinterpret_cast<char *>(&tl), sizeof(TrackLengths));
-      fs.read(buffer, tl.imageLen + tl.trackIdLen);
-      std::string image(buffer, tl.imageLen);
-      std::string trackID(buffer + tl.imageLen, tl.trackIdLen);
-
-      fs.read(reinterpret_cast<char *>(&tr), sizeof(TrackRecord));
-      auto observation = InstanciateObservation(tr.x, tr.y, tr.scale, tr.featureID, tr.r, tr.g, tr.b, -1, -1);
-      manager.AddObservation(image, trackID, observation);
-  }
-
-  return manager;
+  return ReadBinaryTracksFile(filename);
 }
 
 void TracksManager::WriteToFile(const std::string& filename) const {
   std::ofstream ostream(filename, std::ios_base::binary);
-  if (ostream.is_open()) {
-    WriteToStreamCurrentVersion(ostream, *this);
-  } else {
-    throw std::runtime_error("Can't write tracks manager file");
+  if (!ostream.is_open()) {
+    throw std::runtime_error("Can't write tracks manager file: " + filename);
+  }
+  WriteToStreamCurrentVersion(ostream, *this);
+  ostream.flush();
+  if (!ostream) {
+    throw std::runtime_error("Can't write tracks manager file: " + filename);
   }
 }
 
