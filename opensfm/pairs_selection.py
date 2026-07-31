@@ -686,7 +686,7 @@ def _run_matching_strategies(
             )
         except (spatial.QhullError, ValueError):
             g = match_candidates_by_distance(
-                images_ref, images_cand, exifs, reference, 12, 0
+                images_ref, images_cand, exifs, reference, 12, 0, use_opk
             )
 
         t = match_candidates_by_time(
