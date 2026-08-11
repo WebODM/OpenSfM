@@ -201,15 +201,15 @@ def read_images(
                 segmentation_array, instances_array = None, None
             args = (image, image_array, segmentation_array,
                     instances_array, data, force)
-        except IOError as e:
+        except Exception as e:
             logger.warning(f"Corrupted image {image}: {str(e)}")
             args = image, np.array(np.zeros((0, 0, 3))), None, None, data, force
-        finally:
-            queue.put(args, block=True, timeout=full_queue_timeout)
-            counter.increment()
-            if counter.value() == expected:
-                logger.debug("Finished reading images")
-                queue.put(None)
+
+        queue.put(args, block=True, timeout=full_queue_timeout)
+        counter.increment()
+        if counter.value() == expected:
+            logger.debug("Finished reading images")
+            queue.put(None)
 
 
 def run_detection(queue: ProcessQueue) -> None:

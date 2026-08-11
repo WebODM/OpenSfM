@@ -1413,17 +1413,18 @@ def imread_rawpy(path, grayscale=False, unchanged=False, anydepth=False):
 
 
 def _imread_postprocess(image, grayscale=False, unchanged=False, anydepth=False):
-    if image is None: 
-        raise IOError("Unable to load image {}".format(path))
+    if image is None:
+        raise IOError("Unable to load image")
 
     if not anydepth or not unchanged:
         # Normalize to 8bit
         min_value = float(image.min())
         value_range = float(image.max()) - min_value
-        
+
         image = image.astype(np.float32)
         image -= min_value
-        image *= 255.0 / value_range
+        if value_range > 0:
+            image *= 255.0 / value_range
         np.around(image, out=image)
         image[image > 255] = 255
         image[image < 0] = 0
