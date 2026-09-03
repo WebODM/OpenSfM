@@ -325,7 +325,8 @@ def scale_image(image: NDArray, max_size: int) -> NDArray:
         return image
     width = int(round(width * factor))
     height = int(round(height * factor))
-    return cv2.resize(image, (width, height), interpolation=cv2.INTER_NEAREST)
+    return cv2.resize(image, (width, height), interpolation=cv2.INTER_AREA)
+
 _REMAP_CAMERA_TYPES = [
     "perspective",
     "brown",
