@@ -577,6 +577,26 @@ def extract_features_orb(
     return points, desc
 
 
+xfeat_model = None
+from opensfm.xfeat.extractor import XFeat
+
+def extract_features_xfeat(
+    image: np.ndarray, config: Dict[str, Any], features_count: int
+) -> Tuple[np.ndarray, np.ndarray]:
+    global xfeat_model
+    if xfeat_model is None:
+        xfeat_model = XFeat()
+    
+    t = time.time()
+
+    fd = xfeat_model.detect_and_compute(image.astype(np.float32) / 255, top_k=features_count)
+    points = fd["features"]
+    desc = fd["descriptors"]
+
+    logger.debug("Found {0} points in {1}s".format(len(points), time.time() - t))
+    return points, desc
+
+
 def extract_features(
     image: NDArray, config: Dict[str, Any], is_panorama: bool
 ) -> Tuple[NDArray, NDArray, NDArray]:
@@ -617,19 +637,39 @@ def extract_features(
 
     if len(image) == 0:
         return np.array(np.zeros((0, 3))), np.array(np.zeros((0, 3))), np.array(np.zeros((0, 3)))
+    
+    feature_type = config["feature_type"].upper()
+
+    if feature_type == "XFEAT":
+        # extraction_size must be aligned to the nearest power of 2
+        image_size = max(image.shape[:2])
+        max_extraction_size = 1 << (image_size.bit_length() - 1)
+        lower_power = 1 << (extraction_size.bit_length() - 1)
+        upper_power = lower_power << 1
+        extraction_size = (
+            lower_power
+            if extraction_size - lower_power <= upper_power - extraction_size
+            else upper_power
+        )
+        extraction_size = min(extraction_size, max_extraction_size)
 
     image = resized_image(image, extraction_size)
     if image.ndim == 2:  # convert (h, w) to (h, w, 1)
         image = np.expand_dims(image, axis=2)
 
+
     # convert color to gray-scale if necessary
-    if image.shape[2] == 3:
-        image_gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
-    else:
+    if feature_type == "XFEAT":
         image_gray = image
 
+        # TODO: what if already gray, we need RGB (duplicate)
+    else:
+        if image.shape[2] == 3:
+            image_gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+        else:
+            image_gray = image
+
     keypoints = None
-    feature_type = config["feature_type"].upper()
     if feature_type == "SIFT":
         points, desc = extract_features_sift(image_gray, config, features_count)
     elif feature_type == "SURF":
@@ -642,6 +682,9 @@ def extract_features(
         points, desc = extract_features_orb(image_gray, config, features_count)
     elif feature_type == 'DSPSIFT':
         points, desc = extract_features_dspsift(image_gray, config, features_count)
+    elif feature_type == 'XFEAT':
+        points, desc = extract_features_xfeat(image_gray, config, features_count)
+    
     else:
         raise ValueError(
             "Unknown feature type (must be SURF, SIFT, AKAZE, HAHOG, ORB or DSPSIFT)"
