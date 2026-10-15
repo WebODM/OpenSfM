@@ -687,11 +687,11 @@ void BundleAdjuster::Run() {
         ceres::SubsetManifold *subset_manifold = new ceres::SubsetManifold(data.size(), { 6 });
           problem->SetManifold(data.data(), subset_manifold);
 
-          // Bound principal point (Cx, Cy) parameters to [-0.01, 0.01]
-          problem->SetParameterLowerBound(data.data(), 7, -0.01);
-          problem->SetParameterLowerBound(data.data(), 8, -0.01);
-          problem->SetParameterUpperBound(data.data(), 7, 0.01);
-          problem->SetParameterUpperBound(data.data(), 8, 0.01);
+          // Bound principal point (Cx, Cy) parameters to [-0.05, 0.05]
+          problem->SetParameterLowerBound(data.data(), 7, -0.05);
+          problem->SetParameterLowerBound(data.data(), 8, -0.05);
+          problem->SetParameterUpperBound(data.data(), 7, 0.05);
+          problem->SetParameterUpperBound(data.data(), 8, 0.05);
       }
     }
 
