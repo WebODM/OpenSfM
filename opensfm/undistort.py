@@ -56,6 +56,9 @@ def undistort_reconstruction(
         elif shot.camera.projection_type == "fisheye_opencv":
             urec.add_camera(perspective_camera_from_fisheye_opencv(shot.camera))
             subshots = [get_shot_with_different_camera(urec, shot, image_format)]
+        elif shot.camera.projection_type == "dual":
+            urec.add_camera(perspective_camera_from_dual(shot.camera))
+            subshots = [get_shot_with_different_camera(urec, shot, image_format)]
         elif shot.camera.projection_type == "fisheye62":
             urec.add_camera(perspective_camera_from_fisheye62(shot.camera))
             subshots = [get_shot_with_different_camera(urec, shot, image_format)]
@@ -333,6 +336,7 @@ _REMAP_CAMERA_TYPES = [
     "fisheye",
     "fisheye_opencv",
     "fisheye62",
+    "dual",
 ]
 
 
@@ -432,6 +436,15 @@ def perspective_camera_from_fisheye(fisheye: pygeometry.Camera) -> pygeometry.Ca
     camera.id = fisheye.id
     camera.width = fisheye.width
     camera.height = fisheye.height
+    return camera
+
+
+def perspective_camera_from_dual(dual: pygeometry.Camera) -> pygeometry.Camera:
+    """Create a perspective camera from a dual."""
+    camera = pygeometry.Camera.create_perspective(dual.focal, 0.0, 0.0)
+    camera.id = dual.id
+    camera.width = dual.width
+    camera.height = dual.height
     return camera
 
 

@@ -917,7 +917,7 @@ def camera_from_exif_metadata(
         )
     elif calib_pt == "dual":
         camera = pygeometry.Camera.create_dual(
-            calib["transition"], calib["focal"], calib["k1"], calib["k2"]
+            calib.get("transition", 0.5), calib["focal"], calib["k1"], calib["k2"]
         )
     elif pygeometry.Camera.is_panorama(calib_pt):
         camera = pygeometry.Camera.create_spherical()
