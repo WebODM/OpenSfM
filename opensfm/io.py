@@ -1326,6 +1326,11 @@ def open_rt(path: str) -> TextIO:
     return open(path, "r", encoding="utf-8")
 
 
+def is_tiff(path: str) -> bool:
+    with open(path, "rb") as f:
+        return f.read(4) in (b"II*\x00", b"MM\x00*")
+
+
 def imread(
     path: str, grayscale: bool = False, unchanged: bool = False, anydepth: bool = False
 ) -> NDArray:
@@ -1334,6 +1339,8 @@ def imread(
         return imread_rasterio(path, grayscale, unchanged, anydepth)
     elif ext.lower() in [".dng", ".raw", ".nef"]:
         return imread_rawpy(path, grayscale, unchanged, anydepth)
+    elif is_tiff(path):
+        return imread_rasterio(path, grayscale, unchanged, anydepth)
     else:
         with open(path, "rb") as fb:
             return imread_from_fileobject(fb, grayscale, unchanged, anydepth)
@@ -1641,14 +1648,7 @@ class IoFilesystemDefault(IoFilesystemBase):
         grayscale: bool = False,
         unchanged: bool = False,
         anydepth: bool = False):
-        _, ext = os.path.splitext(path)
-        if ext.lower() == ".tiff" or ext.lower() == ".tif":
-            return imread_rasterio(path, grayscale, unchanged, anydepth)
-        elif ext.lower() in [".dng", ".raw", ".nef"]:
-            return imread_rawpy(path, grayscale, unchanged, anydepth)
-        else:
-            with cls.open_rb(path) as fb:
-                return imread_from_fileobject(fb, grayscale, unchanged, anydepth)
+        return imread(path, grayscale, unchanged, anydepth)
 
     @classmethod
     def imwrite(cls, path: str, image):
